@@ -6,6 +6,7 @@ import copy
 import gym
 from gym import wrappers
 from time import time
+from datetime import datetime
 
 from tqdm import tqdm
 
@@ -168,7 +169,7 @@ class ReservoirNetworkSimulator:
                 # shutil.move("2D_3d_video.mp4", curr_dir)
 
         avg_tot_reward = tot_reward / (i + 1)
-        # print(f"avg_tot_reward: {avg_tot_reward}")
+        print(f"avg_tot_reward: {avg_tot_reward}")
         return avg_tot_reward
 
     def get_seed(self):
@@ -198,7 +199,7 @@ class CMAEngine:
             objective_fct=fitness_fn,
             iterations=num_generations,
             min_iterations=num_generations,
-            n_jobs=8) #-1
+            n_jobs=-1)
 
         cma_es_result = self.cma_es_solver.result
         best_W_out = cma_es_result[0]
@@ -386,7 +387,7 @@ class SupervisedLearningEngine():
 
 def get_env(collect_data_for_postprocessing=False):
     env = Environment(
-        final_time=7,
+        final_time=20,
         num_steps_per_update=50,
         number_of_control_points=3,
         alpha=75,
@@ -432,18 +433,21 @@ reservoir_network_simulator = ReservoirNetworkSimulator(
         num_coeff_per_action = num_coeff_per_action,
         n_reservoir_output_neurons = n_reservoir_output_neurons)
 
-num_elastica_timesteps = 100 * 7 #TODO(kshivvy): Refactor in terms of final episode time (in sec.) and num_steps_per_update
+num_elastica_timesteps = 100 * 20 #TODO(kshivvy): Refactor in terms of final episode time (in sec.) and num_steps_per_update
 
 def fitness_fn(W_out):
     global reservoir_network_simulator
     global num_elastica_timesteps
 
-    num_trials = 3
+    num_trials = 1
     mean_accumulated_reward = 0.0
 
     for i in range(num_trials):
         env = get_env()
         env.reset()
+        now = datetime.now()
+        current_time = now.strftime("%H:%M:%S")
+        print("Elastica simulation started at: ", current_time)
         mean_accumulated_reward += reservoir_network_simulator.simulate_network(W_out, env, num_elastica_timesteps)
 
     mean_accumulated_reward /= num_trials
@@ -455,8 +459,8 @@ def train(cma_save_file=''):
     # CMA-ES parameters
     global weights_size
     initial_step_size = 0.0001
-    population_size = 4 #max(32, int(weights_size * (weights_size ** 0.5)))
-    num_cma_generations = 2 #100
+    population_size = 64 #max(32, int(weights_size * (weights_size ** 0.5)))
+    num_cma_generations = 5 #100
 
     cma_engine = CMAEngine(
             weights_size = weights_size,
