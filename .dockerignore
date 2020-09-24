@@ -1,0 +1,17 @@
+AUTHORS.md
+Dockerfile
+README.md
+README.rst
+LICENSE
+
+/tests
+/venv
+/examples
+/assets
+/docs
+
+/ReacherSoft_Case0-Keshav/SupervisedLearningFiles
+/ReacherSoft_Case1
+/ReacherSoft_Case2
+/ReacherSoft_Case3
+/ReacherSoft_Case4

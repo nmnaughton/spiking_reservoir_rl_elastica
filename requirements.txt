@@ -1,0 +1,16 @@
+numpy
+numba
+scipy
+sklearn
+matplotlib
+tqdm
+numba
+ffmpeg
+stable-baselines
+nengo
+tqdm
+cma
+ffmpeg
+tensorflow==1.15.3
+pickle-mixin
+gym
