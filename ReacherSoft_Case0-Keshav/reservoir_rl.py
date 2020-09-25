@@ -107,30 +107,52 @@ class ReservoirNetworkSimulator:
         self.state = env.get_state()
         tot_reward = 0.0
 
+        network = nengo.Network(seed = self.seed)
+        with network:
+            def func(time):
+                state = self.state
+                return state
+
+            input_layer = nengo.Node(output=func, size_in = 0, size_out=self.input_size, label="Input Points")
+            reservoir = nengo.Ensemble(n_neurons=self.n_neurons, dimensions=self.input_size, neuron_type=nengo.LIF())
+            conn_in = nengo.Connection(input_layer, reservoir.neurons, synapse=None, transform=self.W_in)
+            con_res = nengo.Connection(reservoir.neurons, reservoir.neurons, transform=self.W_reservoir)
+            spikes_probe = nengo.Probe(reservoir.neurons)
+
+            if collect_metadata:
+                output_probe = nengo.Probe(reservoir.neurons, 'output', synapse=0.005)
+                voltage_probe = nengo.Probe(reservoir.neurons, 'voltage', synapse=0.005)
+
+        sim = nengo.Simulator(network, progress_bar=False)
+
         for i in range(num_elastica_timesteps):
-            with nengo.Network(seed = self.seed) as network:
-                input_layer = nengo.Node(output=self.state, size_out=self.input_size)
-                reservoir = nengo.Ensemble(n_neurons=self.n_neurons, dimensions=self.input_size, neuron_type=nengo.LIF())
+            # NOTE: This is the old method of generating the reservoir
+            # with nengo.Network(seed = self.seed) as network:
+            #     input_layer = nengo.Node(output=self.state, size_out=self.input_size)
+            #     reservoir = nengo.Ensemble(n_neurons=self.n_neurons, dimensions=self.input_size, neuron_type=nengo.LIF())
+            #
+            #     nengo.Connection(input_layer, reservoir.neurons, synapse=None, transform=self.W_in)
+            #     nengo.Connection(reservoir.neurons, reservoir.neurons, transform=self.W_reservoir)
+            #
+            #     spikes_probe = nengo.Probe(reservoir.neurons)
+            #
+            #     if collect_metadata:
+            #         output_probe = nengo.Probe(reservoir.neurons, 'output', synapse=0.005)
+            #         voltage_probe = nengo.Probe(reservoir.neurons, 'voltage', synapse=0.005)
+            #
+            # with nengo.Simulator(network, progress_bar=False) as sim:
+            #     sim.run(self.sim_time)
 
-                nengo.Connection(input_layer, reservoir.neurons, synapse=None, transform=self.W_in)
-                nengo.Connection(reservoir.neurons, reservoir.neurons, transform=self.W_reservoir)
-
-                spikes_probe = nengo.Probe(reservoir.neurons)
-
-                if collect_metadata:
-                    output_probe = nengo.Probe(reservoir.neurons, 'output', synapse=0.005)
-                    voltage_probe = nengo.Probe(reservoir.neurons, 'voltage', synapse=0.005)
-
-            with nengo.Simulator(network, progress_bar=False) as sim:
-                sim.run(self.sim_time)
+            sim.run(self.sim_time)
 
             # Take the output at the last Nengo simulation timestep
-            # reservoir_output = sim.data[output_probe][-1]
+            # reservoir_output = sim.data[output_probe][-1] # NOTE: This is for the old method of generating the reservoir
 
             # Sum the output over all Nengo simulation timesteps
-            reservoir_output = np.sum(sim.data[spikes_probe], axis=0)
+            # reservoir_output = np.sum(sim.data[spikes_probe], axis=0) # NOTE: This is for the old method of generating the reservoir
+            reservoir_output = np.sum(sim.data[spikes_probe][-10:,:], axis=0)
 
-            # Logic for using alpha (leakage rate)
+            # Logic for using alpha (leakage rate). NOTE: This is for the old method of generating the reservoir
             # if len(reservoir_state) == 0:
             #     reservoir_state = reservoir_output
             # else:
@@ -459,7 +481,7 @@ def train(cma_save_file=''):
     # CMA-ES parameters
     global weights_size
     initial_step_size = 0.00001
-    population_size = 4 # max(32, int(weights_size * (weights_size ** 0.5)))
+    population_size = 64 # max(32, int(weights_size * (weights_size ** 0.5)))
     num_cma_generations = 5 # 500
 
     cma_engine = CMAEngine(
