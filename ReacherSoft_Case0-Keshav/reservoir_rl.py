@@ -118,38 +118,19 @@ class ReservoirNetworkSimulator:
             conn_in = nengo.Connection(input_layer, reservoir.neurons, synapse=None, transform=self.W_in)
             con_res = nengo.Connection(reservoir.neurons, reservoir.neurons, transform=self.W_reservoir)
             spikes_probe = nengo.Probe(reservoir.neurons)
-
+            output_probe = nengo.Probe(reservoir.neurons, 'output', synapse=0.01)
             if collect_metadata:
-                output_probe = nengo.Probe(reservoir.neurons, 'output', synapse=0.005)
-                voltage_probe = nengo.Probe(reservoir.neurons, 'voltage', synapse=0.005)
+                voltage_probe = nengo.Probe(reservoir.neurons, 'voltage', synapse=0.01)
 
         sim = nengo.Simulator(network, progress_bar=False)
 
         for i in range(num_elastica_timesteps):
-            # NOTE: This is the old method of generating the reservoir
-            # with nengo.Network(seed = self.seed) as network:
-            #     input_layer = nengo.Node(output=self.state, size_out=self.input_size)
-            #     reservoir = nengo.Ensemble(n_neurons=self.n_neurons, dimensions=self.input_size, neuron_type=nengo.LIF())
-            #
-            #     nengo.Connection(input_layer, reservoir.neurons, synapse=None, transform=self.W_in)
-            #     nengo.Connection(reservoir.neurons, reservoir.neurons, transform=self.W_reservoir)
-            #
-            #     spikes_probe = nengo.Probe(reservoir.neurons)
-            #
-            #     if collect_metadata:
-            #         output_probe = nengo.Probe(reservoir.neurons, 'output', synapse=0.005)
-            #         voltage_probe = nengo.Probe(reservoir.neurons, 'voltage', synapse=0.005)
-            #
-            # with nengo.Simulator(network, progress_bar=False) as sim:
-            #     sim.run(self.sim_time)
-
             sim.run(self.sim_time)
 
             # Take the output at the last Nengo simulation timestep
-            reservoir_output = sim.data[spikes_probe][-1] * 1e-4 # NOTE: This is for the old method of generating the reservoir
+            reservoir_output = sim.data[output_probe][-1] * 1e-4
 
             # Sum the output over all Nengo simulation timesteps
-            # reservoir_output = np.sum(sim.data[spikes_probe], axis=0) # NOTE: This is for the old method of generating the reservoir
             # reservoir_output = np.sum(sim.data[spikes_probe][-10:,:], axis=0)
 
             # Logic for using alpha (leakage rate). NOTE: This is for the old method of generating the reservoir
@@ -258,161 +239,10 @@ class CMAEngine:
 
     def set_fitness_fn(self, fitness_fn):
         self.fitness_fn = fitness_fn
-
-class SupervisedLearningEngine():
-
-    def __init__(self, reservoir_output_file_path, reload_reservoir_data=False):
-        self.seed = 101
-        self.input_size = 14
-        self.output_size = 3
-        self.n_reservoir_neurons = 128
-        self.W_in = np.load('W_in.npy')
-        self.W_reservoir = np.load('W_reservoir.npy')
-
-        self._load_state_action_pairs()
-
-        if reload_reservoir_data:
-            self._generate_reservoir_outputs()
-
-        self.reservoir_outputs = np.load(reservoir_output_file_path)
-        self.state = self.states[0]
-
-        print(self.states.shape)
-        print(self.actions.shape)
-        print(self.reservoir_outputs.shape)
-
-    def _load_state_action_pairs(self):
-        file_path = 'state_action_pairs.npz'
-        npz_file = np.load('state_action_pairs.npz')
-
-        self.states  = npz_file['state']
-        actions = npz_file['action']
-
-        self.num_data_pts = actions.shape[0]
-
-        self.actions = np.zeros((self.num_data_pts, self.output_size))
-        self.actions[1:] = actions[0:(self.num_data_pts - 1)]
-
-    def _generate_reservoir_outputs(self):
-        self.spikes = []
-        self.decoded_outputs = []
-        self.voltages = []
-
-        self.summed_spikes = []
-        self.summed_decoded_outputs = []
-        self.summed_voltages = []
-
-        for i in tqdm(range(self.num_data_pts)):
-            self.state = self.states[i]
-
-            with nengo.Network(seed = self.seed) as network:
-                input_layer = nengo.Node(output=self.state, size_out=self.input_size)
-                reservoir = nengo.Ensemble(n_neurons=self.n_reservoir_neurons, dimensions=self.input_size, neuron_type=nengo.LIF())
-
-                nengo.Connection(input_layer, reservoir.neurons, synapse=None, transform=self.W_in)
-                nengo.Connection(reservoir.neurons, reservoir.neurons, transform=self.W_reservoir)
-
-                spikes_probe = nengo.Probe(reservoir.neurons)
-                decoded_output_probe = nengo.Probe(reservoir.neurons, 'output', synapse=0.005)
-                voltage_probe = nengo.Probe(reservoir.neurons, 'voltage', synapse=0.005)
-
-            with nengo.Simulator(network, progress_bar=False) as sim:
-                sim.run(0.01)
-
-            # Take the output at the last Nengo simulation timestep
-            spikes = sim.data[spikes_probe][-1]
-            decoded_output = sim.data[decoded_output_probe][-1]
-            voltages = sim.data[voltage_probe][-1]
-
-            # Sum the output over all Nengo simulation timesteps
-            summed_spikes = np.sum(sim.data[spikes_probe], axis=0)
-            summed_decoded_output = np.sum(sim.data[decoded_output_probe], axis=0)
-            summed_voltages = np.sum(sim.data[voltage_probe], axis=0)
-
-            self.spikes.append(spikes)
-            self.decoded_outputs.append(decoded_output)
-            self.voltages.append(voltages)
-
-            self.summed_spikes.append(summed_spikes)
-            self.summed_decoded_outputs.append(summed_decoded_output)
-            self.summed_voltages.append(summed_voltages)
-
-        self.spikes = np.array(self.spikes)
-        self.decoded_outputs = np.array(self.decoded_outputs)
-        self.voltages = np.array(self.voltages)
-
-        self.summed_spikes = np.array(self.summed_spikes)
-        self.summed_decoded_outputs = np.array(self.summed_decoded_outputs)
-        self.summed_voltages = np.array(self.summed_voltages)
-
-        np.save('spikes.npy', self.spikes)
-        np.save('decoded_outputs.npy', self.decoded_outputs)
-        np.save('voltages.npy', self.voltages)
-
-        np.save('summed_spikes.npy', self.summed_spikes)
-        np.save('summed_decoded_outputs.npy', self.summed_decoded_outputs)
-        np.save('summed_voltages.npy', self.summed_voltages)
-
-    def run_gradient_descent_tf(self):
-        # Source: https://donaldpinckney.com/books/tensorflow/book/ch2-linreg/2018-03-21-multi-variable.html
-
-        # Define data placeholders
-        reservoir_output = tf.placeholder(tf.float32, shape=(self.n_reservoir_neurons, None))
-        action = tf.placeholder(tf.float32, shape=(self.output_size, None))
-
-        # Define trainable variables
-        W_out = tf.get_variable("W_out", shape=(self.output_size, self.n_reservoir_neurons))
-
-        # Define model output
-        predicted_action = tf.matmul(W_out, reservoir_output)
-
-        # Define loss function
-        L = tf.reduce_sum((predicted_action - action)**2)
-
-        # Define optimizer
-        # optimizer = tf.train.AdamOptimizer().minimize(L)
-        optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.001).minimize(L)
-
-        # Create a session and initialize variables
-        session = tf.Session()
-        session.run(tf.global_variables_initializer())
-
-        # Main optimization loop
-        for i in range(100):
-            _, current_loss, current_W_out = session.run([optimizer, L, W_out], feed_dict={
-                reservoir_output: self.reservoir_outputs.transpose(),
-                action: self.actions.transpose()
-            })
-            # print("t = %g, loss = %g, W_out = %s, b = %s" % (t, current_loss, str(current_W_out), str(current_b)))
-            print("t = %g, loss = %g" % (i, current_loss))
-
-        np.save('best_W_out.npy', current_W_out)
-
-    def run_linear_regression(self):
-        window = 10
-
-        def moving_average(a, n=3) :
-            ret = np.cumsum(a, dtype=float)
-            ret[n:] = ret[n:] - ret[:-n]
-            return ret[n - 1:] / n
-
-        smooth_actions = np.zeros((moving_average(self.actions[:,0],window).shape[0],self.actions.shape[1]))
-        for i in range(self.actions.shape[1]):
-            smooth_actions[:,i] = moving_average(self.actions[:,i],window)
-
-        smooth_reservoir_outputs = np.zeros((moving_average(self.reservoir_outputs[:,0],window).shape[0],self.reservoir_outputs.shape[1]))
-        for i in range(self.reservoir_outputs.shape[1]):
-            smooth_reservoir_outputs[:,i] = moving_average(self.reservoir_outputs[:,i],window)
-
-        reg_smooth = LinearRegression().fit(smooth_reservoir_outputs, smooth_actions)
-        r_squared = reg_smooth.score(smooth_reservoir_outputs, smooth_actions)
-        print(f"r_squared: {r_squared}")
-        np.save('best_W_out.npy', reg_smooth.coef_)
-        print(reg_smooth.coef_)
-
+ 
 def get_env(collect_data_for_postprocessing=False):
     env = Environment(
-        final_time=5,
+        final_time=0.5,
         num_steps_per_update=50,
         number_of_control_points=3,
         alpha=75,
@@ -458,7 +288,7 @@ reservoir_network_simulator = ReservoirNetworkSimulator(
         num_coeff_per_action = num_coeff_per_action,
         n_reservoir_output_neurons = n_reservoir_output_neurons)
 
-num_elastica_timesteps = int(100 * 5) #TODO(kshivvy): Refactor in terms of final episode time (in sec.) and num_steps_per_update
+num_elastica_timesteps = int(100 * 0.5) #TODO(kshivvy): Refactor in terms of final episode time (in sec.) and num_steps_per_update
 
 def fitness_fn(W_out):
     global reservoir_network_simulator

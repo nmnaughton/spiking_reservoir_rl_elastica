@@ -199,6 +199,11 @@ class Environment(gym.Env):
 
         """
         super(Environment, self).__init__()
+
+        # This is being set to help with the multiprocessing so you dont get the same initial position
+        np.random.seed(None)
+
+
         self.dim = dim
         # Integrator type
         self.StatefulStepper = PositionVerlet()
@@ -357,6 +362,12 @@ class Environment(gym.Env):
             poisson_ratio=poisson_ratio,
         )
 
+        # import random
+        # from datetime import datetime
+        # print(int(datetime.now()))
+
+        
+
         # Now rod is ready for simulation, append rod to simulation
         self.simulator.append(self.shearable_rod)
         # self.mode = 4
@@ -376,6 +387,8 @@ class Environment(gym.Env):
 
             # print("Target position:", t_x, t_y, t_z)
             target_position = np.array([t_x, t_y, t_z])
+            # from random import randint
+            # print('Initial target position:', target_position)
 
         # initialize sphere
         self.sphere = Sphere(
@@ -409,6 +422,8 @@ class Environment(gym.Env):
                 self.v_y,
                 self.v_z,
             ]
+            # print('Initial target velocity:', self.sphere.velocity_collection[..., 0])
+            # print('')
             self.boundaries = np.array(self.boundary)
 
         # Set rod and sphere directors to each other.
@@ -735,7 +750,7 @@ class Environment(gym.Env):
                 rod_compact_velocity_norm,
                 rod_compact_velocity_dir,
                 # target information
-                sphere_compact_state - rod_tip_location,
+                (sphere_compact_state - rod_tip_location)*10,
                 sphere_compact_velocity_norm, # - rod_compact_velocity_norm,
                 sphere_compact_velocity_dir, # - rod_compact_velocity_dir,
             )
@@ -823,12 +838,13 @@ class Environment(gym.Env):
                 self.time_tracker,
                 self.time_step,
             )
+        # print(self.num_steps_per_update, self.time_tracker)
 
-
+        # print(self.time_tracker)
 
         if self.mode == 4:
             self.trajectory_iteration += 1
-            if self.trajectory_iteration == 100:
+            if self.trajectory_iteration == 1000:
                 # print('changing direction')
                 self.rand_direction_1 = np.pi * np.random.uniform(0, 2)
                 if self.dim == 2.0 or self.dim == 2.5:
@@ -876,17 +892,7 @@ class Environment(gym.Env):
         """ Done is a boolean to reset the environment before episode is completed """
         done = False
 
-        # Position of the rod cannot be NaN, it is not valid, stop the simulation
-        invalid_values_condition = _isnan_check(self.shearable_rod.position_collection)
 
-        if invalid_values_condition == True:
-            # print(" Nan detected, exiting simulation now")
-            self.shearable_rod.position_collection = np.zeros(
-                self.shearable_rod.position_collection.shape
-            )
-            reward = -1000
-            state = self.get_state()
-            done = True
 
         if np.isclose(dist, 0.0, atol=0.05 * 2.0).all():
             self.on_goal += self.time_step
@@ -898,6 +904,18 @@ class Environment(gym.Env):
 
         else:
             self.on_goal = 0
+
+        # Position of the rod cannot be NaN, it is not valid, stop the simulation
+        invalid_values_condition = _isnan_check(self.shearable_rod.position_collection)
+
+        if invalid_values_condition == True:
+            print("   Nan detected, exiting simulation early")
+            self.shearable_rod.position_collection = np.zeros(
+                self.shearable_rod.position_collection.shape
+            )
+            reward = -100
+            state = self.get_state()
+            done = True
 
         self.score += reward
         if self.current_step >= self.total_learning_steps:
