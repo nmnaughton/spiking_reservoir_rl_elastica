@@ -909,7 +909,7 @@ class Environment(gym.Env):
         invalid_values_condition = _isnan_check(self.shearable_rod.position_collection)
 
         if invalid_values_condition == True:
-            print("   Nan detected, exiting simulation early")
+            # print("   Nan detected, exiting simulation early")
             self.shearable_rod.position_collection = np.zeros(
                 self.shearable_rod.position_collection.shape
             )

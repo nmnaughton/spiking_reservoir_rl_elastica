@@ -242,7 +242,7 @@ class CMAEngine:
  
 def get_env(collect_data_for_postprocessing=False):
     env = Environment(
-        final_time=0.5,
+        final_time=5,
         num_steps_per_update=50,
         number_of_control_points=3,
         alpha=75,
@@ -288,7 +288,7 @@ reservoir_network_simulator = ReservoirNetworkSimulator(
         num_coeff_per_action = num_coeff_per_action,
         n_reservoir_output_neurons = n_reservoir_output_neurons)
 
-num_elastica_timesteps = int(100 * 0.5) #TODO(kshivvy): Refactor in terms of final episode time (in sec.) and num_steps_per_update
+num_elastica_timesteps = int(100 * 5) #TODO(kshivvy): Refactor in terms of final episode time (in sec.) and num_steps_per_update
 
 def fitness_fn(W_out):
     global reservoir_network_simulator
@@ -303,7 +303,9 @@ def fitness_fn(W_out):
         mean_accumulated_reward += reservoir_network_simulator.simulate_network(W_out, env, num_elastica_timesteps)
 
     mean_accumulated_reward /= num_trials
-    print(f"mean_accumulated_reward: {mean_accumulated_reward}")
+    # print(f"mean_accumulated_reward: {mean_accumulated_reward}")
+    with open("logging.txt", "a") as myfile:
+        myfile.write(f"mean_accumulated_reward: {mean_accumulated_reward}\n")
     fitness = -1.0 * mean_accumulated_reward
     return fitness
 
@@ -312,7 +314,7 @@ def train(cma_save_file=''):
     global weights_size
     initial_step_size = 1.0 # 0.00001
     population_size = 128 # max(32, int(weights_size * (weights_size ** 0.5)))
-    num_cma_generations = 50 # 500
+    num_cma_generations = 100 # 500
 
     cma_engine = CMAEngine(
             weights_size = weights_size,
