@@ -110,7 +110,7 @@ class ReservoirNetworkSimulator:
         network = nengo.Network(seed = self.seed)
         with network:
             def func(time):
-                state = self.state
+                state = self.state * 2000
                 return state
 
             input_layer = nengo.Node(output=func, size_in = 0, size_out=self.input_size, label="Input Points")
@@ -146,11 +146,11 @@ class ReservoirNetworkSimulator:
             sim.run(self.sim_time)
 
             # Take the output at the last Nengo simulation timestep
-            # reservoir_output = sim.data[output_probe][-1] # NOTE: This is for the old method of generating the reservoir
+            reservoir_output = sim.data[spikes_probe][-1] * 1e-4 # NOTE: This is for the old method of generating the reservoir
 
             # Sum the output over all Nengo simulation timesteps
             # reservoir_output = np.sum(sim.data[spikes_probe], axis=0) # NOTE: This is for the old method of generating the reservoir
-            reservoir_output = np.sum(sim.data[spikes_probe][-10:,:], axis=0)
+            # reservoir_output = np.sum(sim.data[spikes_probe][-10:,:], axis=0)
 
             # Logic for using alpha (leakage rate). NOTE: This is for the old method of generating the reservoir
             # if len(reservoir_state) == 0:
@@ -194,7 +194,7 @@ class ReservoirNetworkSimulator:
                     # shutil.move("2D_3d_video.mp4", curr_dir)
 
         avg_tot_reward = tot_reward / (i + 1)
-        print(f"avg_tot_reward: {avg_tot_reward}")
+        # print(f"avg_tot_reward: {avg_tot_reward}")
         return avg_tot_reward
 
     def get_seed(self):
@@ -412,7 +412,7 @@ class SupervisedLearningEngine():
 
 def get_env(collect_data_for_postprocessing=False):
     env = Environment(
-        final_time=20,
+        final_time=5,
         num_steps_per_update=50,
         number_of_control_points=3,
         alpha=75,
@@ -434,7 +434,7 @@ def get_env(collect_data_for_postprocessing=False):
 # Reservoir parameters
 input_size = 14
 output_size = 3
-n_reservoir_neurons = 128
+n_reservoir_neurons = 512 # 128
 sim_time = 0.01
 bounds = [-1, 1]
 action_calculation_method = "full" # "reduced"
@@ -458,13 +458,13 @@ reservoir_network_simulator = ReservoirNetworkSimulator(
         num_coeff_per_action = num_coeff_per_action,
         n_reservoir_output_neurons = n_reservoir_output_neurons)
 
-num_elastica_timesteps = 100 * 20 #TODO(kshivvy): Refactor in terms of final episode time (in sec.) and num_steps_per_update
+num_elastica_timesteps = int(100 * 5) #TODO(kshivvy): Refactor in terms of final episode time (in sec.) and num_steps_per_update
 
 def fitness_fn(W_out):
     global reservoir_network_simulator
     global num_elastica_timesteps
 
-    num_trials = 1
+    num_trials = 4
     mean_accumulated_reward = 0.0
 
     for i in range(num_trials):
@@ -473,16 +473,16 @@ def fitness_fn(W_out):
         mean_accumulated_reward += reservoir_network_simulator.simulate_network(W_out, env, num_elastica_timesteps)
 
     mean_accumulated_reward /= num_trials
-    # print(f"mean_accumulated_reward: {mean_accumulated_reward}")
+    print(f"mean_accumulated_reward: {mean_accumulated_reward}")
     fitness = -1.0 * mean_accumulated_reward
     return fitness
 
 def train(cma_save_file=''):
     # CMA-ES parameters
     global weights_size
-    initial_step_size = 0.00001
-    population_size = 64 # max(32, int(weights_size * (weights_size ** 0.5)))
-    num_cma_generations = 5 # 500
+    initial_step_size = 1.0 # 0.00001
+    population_size = 128 # max(32, int(weights_size * (weights_size ** 0.5)))
+    num_cma_generations = 50 # 500
 
     cma_engine = CMAEngine(
             weights_size = weights_size,
@@ -500,7 +500,7 @@ def train(cma_save_file=''):
     os.makedirs(dir, exist_ok=True)
     np.save(os.path.join(dir, "best_W_out.npy"), best_W_out)
     cma_engine.save(dir)
-    cma_engine.plot(dir)
+    # cma_engine.plot(dir)
     avg_tot_reward = evaluate(best_W_out, dir)
 
     return best_W_out
@@ -547,7 +547,7 @@ def generate_Ws(seed=101, density=0.20, spectral_radius=0.9):
 
 # Command to Run: cd Documents\NCSA\elastica-python-CoRL_cases && venv\Scripts\activate && cd ReacherSoft_Case0-Keshav && python reservoir_rl.py
 def main():
-    # generate_Ws()
+    generate_Ws()
 
     # Directory cleanup. NOTE: IT WILL DELETE YOUR PREVIOUS RESULTS! BACK THEM UP
     if os.path.isdir('./cma_es_data'):
