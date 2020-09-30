@@ -270,12 +270,22 @@ class Environment(gym.Env):
 
         # 8: 4 points for velocity and 4 points for orientation
         # 11: 3 points for target position plus 8 for velocity and orientation
-        self.observation_space = spaces.Box(
-            low=-np.inf,
-            high=np.inf,
-            shape=(self.number_of_control_points + 3 + 4 + 4,),
-            dtype=np.float64,
-        )
+        if self.dim == 2.0:
+            self.observation_space = spaces.Box(
+                low=-np.inf,
+                high=np.inf,
+                shape=(self.number_of_control_points + 3 + 4 + 4,),
+                dtype=np.float64,
+            )
+        elif self.dim == 3.0:
+            self.observation_space = spaces.Box(
+                low=-np.inf,
+                high=np.inf,
+                shape=(self.number_of_control_points*2 + 3 + 4 + 4,),
+                dtype=np.float64,
+            )
+        else:
+            raise Exception("Twist is not implemented in the state yet. Set dim to either 2 or 3.")
 
         # here we specify 4 tasks that can possibly used
         self.mode = mode
@@ -708,16 +718,25 @@ class Environment(gym.Env):
         # print(self.shearable_rod.sigma)
         # print(self.shearable_rod.dilatation)
         np.seterr(divide='ignore', invalid='ignore')
-        avg_kappa = np.zeros(self.number_of_control_points)
+        avg_kappa_1 = np.zeros(self.number_of_control_points)
+        avg_kappa_2 = np.zeros(self.number_of_control_points) 
+        #HOT FIX: needed to add kappa for 3d, these two should be refactored to be more consice
         # self.n_elem-1 is number of curvature values due to veroni regions
         avg_length = int((self.n_elem-1)/(self.number_of_control_points) )
 
         for i in range(0,self.number_of_control_points-1):
             lower = np.rint(avg_length*(i  )).astype(int)
             upper = np.rint(avg_length*(i+1)).astype(int)
-            avg_kappa[i] = self.shearable_rod.kappa[0,lower:upper].mean()
+            avg_kappa_1[i] = self.shearable_rod.kappa[0,lower:upper].mean()
         lower = np.rint(avg_length*(self.number_of_control_points-1  )).astype(int)
-        avg_kappa[-1] = self.shearable_rod.kappa[0,lower:].mean()
+        avg_kappa_1[-1] = self.shearable_rod.kappa[0,lower:].mean()
+
+        for i in range(0,self.number_of_control_points-1):
+            lower = np.rint(avg_length*(i  )).astype(int)
+            upper = np.rint(avg_length*(i+1)).astype(int)
+            avg_kappa_2[i] = self.shearable_rod.kappa[1,lower:upper].mean()
+        lower = np.rint(avg_length*(self.number_of_control_points-1  )).astype(int)
+        avg_kappa_2[-1] = self.shearable_rod.kappa[1,lower:].mean()
             # print(i, lower, upper)
 
         # print(avg_kappa)
@@ -742,20 +761,35 @@ class Environment(gym.Env):
             0.0,
         )
 
-        state = np.concatenate(
-            (
-                # rod information
-                avg_kappa,
-                # rod_compact_state,
-                rod_compact_velocity_norm,
-                rod_compact_velocity_dir,
-                # target information
-                (sphere_compact_state - rod_tip_location)*10,
-                sphere_compact_velocity_norm, # - rod_compact_velocity_norm,
-                sphere_compact_velocity_dir, # - rod_compact_velocity_dir,
+        if self.dim == 2.0:
+            state = np.concatenate(
+                (
+                    # rod information
+                    avg_kappa_1,
+                    # rod_compact_state,
+                    rod_compact_velocity_norm,
+                    rod_compact_velocity_dir,
+                    # target information
+                    (sphere_compact_state - rod_tip_location)*10,
+                    sphere_compact_velocity_norm, # - rod_compact_velocity_norm,
+                    sphere_compact_velocity_dir, # - rod_compact_velocity_dir,
+                )
             )
-        )
-
+        elif self.dim == 3.0:
+            state = np.concatenate(
+                (
+                    # rod information
+                    avg_kappa_1,
+                    avg_kappa_2,
+                    # rod_compact_state,
+                    rod_compact_velocity_norm,
+                    rod_compact_velocity_dir,
+                    # target information
+                    (sphere_compact_state - rod_tip_location)*10,
+                    sphere_compact_velocity_norm, # - rod_compact_velocity_norm,
+                    sphere_compact_velocity_dir, # - rod_compact_velocity_dir,
+                )
+            )
         return state
 
     def step(self, action):
@@ -844,7 +878,7 @@ class Environment(gym.Env):
 
         if self.mode == 4:
             self.trajectory_iteration += 1
-            if self.trajectory_iteration == 1000:
+            if self.trajectory_iteration == 100:
                 # print('changing direction')
                 self.rand_direction_1 = np.pi * np.random.uniform(0, 2)
                 if self.dim == 2.0 or self.dim == 2.5:

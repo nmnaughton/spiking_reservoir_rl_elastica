@@ -1,34 +1,22 @@
-import numpy as np
-import nengo
-import random
-import copy
-
-import gym
-from gym import wrappers
-from time import time
-from datetime import datetime
-
-from tqdm import tqdm
-
 import logging
+import pickle
+import random
 import shutil
+import sys
+from time import time
+from tqdm import tqdm
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-import tensorflow as tf
 
 import cma
-import sys
-import pickle
-from time import sleep
-from matplotlib import cm
+import nengo
+import numpy as np
 import matplotlib.pyplot as plt
 import scipy
-from sklearn.linear_model import LinearRegression
+# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+# import tensorflow as tf
 
-# sys.path.append("../")
 sys.path.append(os.path.abspath(os.path.join('..', 'elastica')))
 from set_environment import Environment
-
 
 class ReservoirNetworkSimulator:
     def __init__(self, input_size, n_neurons, output_size, sim_time,
@@ -47,40 +35,48 @@ class ReservoirNetworkSimulator:
         assert(self.action_calculation_method in self.action_calculation_methods )
         self.num_coeff_per_action = num_coeff_per_action
 
+        # Metadata collection on reservoir simulation
+        self.collect_metadata = False
+
         # Sets up reservoir spiking neurons network with Nengo
         self.seed = 101
         self.W_in = np.load('W_in.npy')
         self.W_reservoir = np.load('W_reservoir.npy')
         self.alpha = 0.8 # Leakage rate
 
-        self.states = []
-        self.actions = []
-        self.rewards = []
-        self.reservoir_outputs = []
-        self.reservoir_voltages = []
-        self.reservoir_spikes = []
+    def _initialize_reservoir(self):
+        # Disable nengo cache warnings
+        nengo.rc.set("decoder_cache", "enabled", "False")
 
-    # NOTE: Normalizing the action makes it very difficult for CMA-ES to converge
-    def _normalize_action_clip(self, action):
-        for i in range(len(action)):
-            if action[i] < -1.0:
-                action[i] = -1.0
-            elif action[i] > 1.0:
-                action[i] = 1.0
+        self.state = np.zeros(self.input_size)
+        self.network = nengo.Network(seed = self.seed)
 
-        return action
+        with self.network:
+            def func(time):
+                return self.state * 2000
 
-    def _normalize_action(self, action):
-        for i in range(len(action)):
-            action[i] /= 10
-        return action
+            W_reservoir_sparse = scipy.sparse.find(self.W_reservoir)
+            indicies = np.array([W_reservoir_sparse[0], W_reservoir_sparse[1]]).T
+            W_reservoir_sparse_nengo = nengo.Sparse(self.W_reservoir.shape, indicies, W_reservoir_sparse[2])
 
-    def _get_action_matrix_multiplication(self, reservoir_output, W_out, collect_metadata):
+            input_layer = nengo.Node(output=func, size_in=0, size_out=self.input_size)
+            reservoir = nengo.Ensemble(n_neurons=self.n_neurons, dimensions=self.input_size, neuron_type=nengo.LIF())
+            conn_in = nengo.Connection(input_layer, reservoir.neurons, synapse=None, transform=self.W_in)
+            conn_res = nengo.Connection(reservoir.neurons, reservoir.neurons, transform=W_reservoir_sparse_nengo)
+            self.output_probe = nengo.Probe(reservoir.neurons, 'output', synapse=0.01, sample_every=self.sim_time)
+
+            if self.collect_metadata:
+                self.spikes_probe = nengo.Probe(reservoir.neurons, sample_every=self.sim_time)
+                self.voltage_probe = nengo.Probe(reservoir.neurons, 'voltage', synapse=0.01, sample_every=self.sim_time)
+
+        self.sim = nengo.Simulator(self.network, progress_bar=False)
+
+    def _get_action_matrix_multiplication(self, reservoir_output, W_out):
         W_out = W_out.reshape((self.output_size, self.n_neurons))
         action = W_out @ reservoir_output
         return action
 
-    def _get_action_linear_combination(self, reservoir_output, W_out, collect_metadata):
+    def _get_action_linear_combination(self, reservoir_output, W_out):
         coefficients = np.array(W_out)
         coefficients = coefficients.reshape((self.output_size, self.num_coeff_per_action))
         action = np.zeros(self.output_size)
@@ -90,108 +86,98 @@ class ReservoirNetworkSimulator:
 
         return action
 
-    def _get_action(self, reservoir_output, W_out, collect_metadata):
+    def _get_action(self, reservoir_output, W_out):
         if (self.action_calculation_method == "full"):
-            return self._get_action_matrix_multiplication(reservoir_output, W_out, collect_metadata)
+            return self._get_action_matrix_multiplication(reservoir_output, W_out)
         else:
-            return self._get_action_linear_combination(reservoir_output[-self.n_reservoir_output_neurons:], W_out, collect_metadata)
+            return self._get_action_linear_combination(reservoir_output[-self.n_reservoir_output_neurons:], W_out)
 
-    def simulate_network(self, W_out, env, num_elastica_timesteps, collect_metadata=False, curr_dir='./', filter_output=True, make_vid=False):
-        # Disable nengo cache warnings
-        nengo.rc.set("decoder_cache", "enabled", "False")
-
-        # NOTE: Video plotting will not work on Blue Waters
-        if make_vid:
-            env.render()
-
+    def simulate_network(self, W_out, env, num_elastica_timesteps):
         self.state = env.get_state()
+        self._initialize_reservoir()
         tot_reward = 0.0
 
-        network = nengo.Network(seed = self.seed)
-        with network:
-            def func(time):
-                state = self.state * 2000
-                return state
-
-            input_layer = nengo.Node(output=func, size_in = 0, size_out=self.input_size, label="Input Points")
-            reservoir = nengo.Ensemble(n_neurons=self.n_neurons, dimensions=self.input_size, neuron_type=nengo.LIF())
-            conn_in = nengo.Connection(input_layer, reservoir.neurons, synapse=None, transform=self.W_in)
-            con_res = nengo.Connection(reservoir.neurons, reservoir.neurons, transform=self.W_reservoir)
-            spikes_probe = nengo.Probe(reservoir.neurons)
-            output_probe = nengo.Probe(reservoir.neurons, 'output', synapse=0.01)
-            if collect_metadata:
-                voltage_probe = nengo.Probe(reservoir.neurons, 'voltage', synapse=0.01)
-
-        sim = nengo.Simulator(network, progress_bar=False)
-
         for i in range(num_elastica_timesteps):
-            sim.run(self.sim_time)
+            self.sim.run(self.sim_time)
 
             # Take the output at the last Nengo simulation timestep
-            reservoir_output = sim.data[output_probe][-1] * 1e-4
+            reservoir_output = self.sim.data[self.output_probe][-1] * 1e-4
 
-            # Sum the output over all Nengo simulation timesteps
-            # reservoir_output = np.sum(sim.data[spikes_probe][-10:,:], axis=0)
-
-            # Logic for using alpha (leakage rate). NOTE: This is for the old method of generating the reservoir
+            # Logic for using alpha (leakage rate).
             # if len(reservoir_state) == 0:
             #     reservoir_state = reservoir_output
             # else:
             #     reservoir_state = (1 - self.alpha)*reservoir_state + self.alpha * reservoir_output
-            # action = self._get_action(reservoir_state, W_out, collect_metadata)
+            # action = self._get_action(reservoir_state, W_out)
 
-            action = self._get_action(reservoir_output, W_out, collect_metadata)
-            # action = W_out @ reservoir_output
+            action = self._get_action(reservoir_output, W_out)
             self.state, reward, done, _ = env.step(action)
-
-            if collect_metadata:
-                self.states.append(self.state)
-                self.actions.append(action)
-                self.rewards.append(reward)
-
-                self.reservoir_outputs.append(sim.data[output_probe])
-                self.reservoir_voltages.append(sim.data[voltage_probe])
-                self.reservoir_spikes.append(sim.data[spikes_probe])
-
             tot_reward += reward
 
             if done:
                 break
 
-        if collect_metadata:
-            np.save(os.path.join(curr_dir, "states.npy"), np.array(self.states))
-            np.save(os.path.join(curr_dir, "actions.npy"), np.array(self.actions))
-            np.save(os.path.join(curr_dir, "rewards.npy"), np.array(self.rewards))
-
-            np.save(os.path.join(curr_dir, "reservoir_outputs.npy"), np.array(self.reservoir_outputs))
-            np.save(os.path.join(curr_dir, "reservoir_voltages.npy"), np.array(self.reservoir_voltages))
-            np.save(os.path.join(curr_dir, "reservoir_spikes.npy"), np.array(self.reservoir_spikes))
-
-            if make_vid:
-                env.close()
-                env.post_processing("video.mp4")
-                if curr_dir != './':
-                    shutil.move("2D_2d_video.mp4", curr_dir)
-                    # shutil.move("2D_3d_video.mp4", curr_dir)
-
         avg_tot_reward = tot_reward / (i + 1)
-        # print(f"avg_tot_reward: {avg_tot_reward}")
         return avg_tot_reward
 
-    def get_seed(self):
-        return self.seed
+    def simulate_network_verbose(self, W_out, env, num_elastica_timesteps, save_dir='./', make_vid=False):
+        # Video plotting will not work on Blue Waters
+        if make_vid:
+            env.render()
 
-    def get_state(self):
-        return self.state
+        if self.collect_metadata:
+            states = []
+            actions = []
+            rewards = []
 
-    def get_states(self):
-        return self.states
+        self.state = env.get_state()
+        self._initialize_reservoir()
+        tot_reward = 0.0
 
-    def get_rewards(self):
-        return self.rewards
+        for i in tqdm(range(num_elastica_timesteps)):
+            self.sim.run(self.sim_time)
 
-    def get_actions(self):
-        return self.actions
+            # Take the output at the last Nengo simulation timestep
+            reservoir_output = self.sim.data[self.output_probe][-1] * 1e-4
+            action = self._get_action(reservoir_output, W_out)
+            self.state, reward, done, _ = env.step(action)
+            tot_reward += reward
+
+            if self.collect_metadata:
+                states.append(self.state)
+                actions.append(action)
+                rewards.append(reward)
+
+            if done:
+                break
+
+        if self.collect_metadata:
+            np.save(os.path.join(save_dir, "states.npy"), np.array(states))
+            np.save(os.path.join(save_dir, "actions.npy"), np.array(actions))
+            np.save(os.path.join(save_dir, "rewards.npy"), np.array(rewards))
+
+            reservoir_outputs = self.sim.data[self.output_probe]
+            reservoir_voltages = self.sim.data[self.voltage_probe]
+            reservoir_spikes = self.sim.data[self.spikes_probe]
+
+            np.save(os.path.join(save_dir, "reservoir_outputs.npy"), np.array(reservoir_outputs))
+            np.save(os.path.join(save_dir, "reservoir_voltages.npy"), np.array(reservoir_voltages))
+            np.save(os.path.join(save_dir, "reservoir_spikes.npy"), np.array(reservoir_spikes))
+
+        if make_vid:
+            env.close()
+            env.post_processing("video.mp4")
+            if save_dir != './':
+                shutil.move("2D_2d_video.mp4", curr_dir)
+                # shutil.move("2D_3d_video.mp4", curr_dir)
+
+        avg_tot_reward = tot_reward / (i + 1)
+        print(f"avg_tot_reward: {avg_tot_reward}")
+        return avg_tot_reward
+
+    def set_collect_metadata(self, collect_metadata):
+        self.collect_metadata = collect_metadata
+        self._initialize_reservoir()
 
 class CMAEngine:
     def __init__(self, weights_size, initial_step_size, population_size):
@@ -239,9 +225,9 @@ class CMAEngine:
 
     def set_fitness_fn(self, fitness_fn):
         self.fitness_fn = fitness_fn
- 
+
 def get_env(collect_data_for_postprocessing=False):
-    env = Environment(
+    return Environment(
         final_time=5,
         num_steps_per_update=50,
         number_of_control_points=3,
@@ -256,15 +242,13 @@ def get_env(collect_data_for_postprocessing=False):
         sim_dt=2.0e-4,
         n_elem=20,
         NU=30,
-        dim=2.0,
-        max_rate_of_change_of_activation=np.infty,
-    )
-    return env
+        dim=3.0, # 2.0,
+        max_rate_of_change_of_activation=np.infty)
 
 # Reservoir parameters
-input_size = 14
-output_size = 3
-n_reservoir_neurons = 512 # 128
+input_size = 17 # 14
+output_size = 6 # 3
+n_reservoir_neurons = 512
 sim_time = 0.01
 bounds = [-1, 1]
 action_calculation_method = "full" # "reduced"
@@ -312,9 +296,9 @@ def fitness_fn(W_out):
 def train(cma_save_file=''):
     # CMA-ES parameters
     global weights_size
-    initial_step_size = 1.0 # 0.00001
-    population_size = 128 # max(32, int(weights_size * (weights_size ** 0.5)))
-    num_cma_generations = 100 # 500
+    initial_step_size = 1.0
+    population_size = 15 # 128
+    num_cma_generations = 15
 
     cma_engine = CMAEngine(
             weights_size = weights_size,
@@ -337,38 +321,45 @@ def train(cma_save_file=''):
 
     return best_W_out
 
-def evaluate(W_out, curr_dir='./', filter_output=True):
+def evaluate(W_out, save_dir='./', set_collect_metadata=True, make_vid=True):
     global reservoir_network_simulator
     global num_elastica_timesteps
 
+    if set_collect_metadata:
+        reservoir_network_simulator.set_collect_metadata(set_collect_metadata)
+
     env = get_env(collect_data_for_postprocessing=True)
     env.reset()
-    avg_tot_reward = reservoir_network_simulator.simulate_network(W_out, env, num_elastica_timesteps, collect_metadata=True, curr_dir=curr_dir, filter_output=filter_output)
+    avg_tot_reward = reservoir_network_simulator.simulate_network_verbose(W_out, env, num_elastica_timesteps, save_dir=save_dir, make_vid=make_vid)
     return avg_tot_reward
 
-def generate_cma_plots(load_dir, save_dir='./'):
+def generate_cma_plots(load_dir='./', save_dir='./'):
     file_path = os.path.join(load_dir, 'saved_cma_es.txt')
-    shutil.copyfile(file_path, os.path.join(save_dir, 'saved_cma_es.txt'))
+
+    if save_dir != './':
+        shutil.copyfile(file_path, os.path.join(save_dir, 'saved_cma_es.txt'))
 
     cma_engine = CMAEngine(weights_size = 10,
                            initial_step_size = 10,
                            population_size = 10)
-    cma_engine.plot(save_dir)
+
+    cma_engine.load(file_path)
+    cma_engine.plot(file_path)
 
 def generate_Ws(seed=101, density=0.20, spectral_radius=0.9):
     np.random.seed(seed)
     W_in = np.random.uniform(bounds[0], bounds[1], (n_reservoir_neurons, input_size))
 
-    # Draw W_reservoir from a random unifrom distribution
+    # Sample W_reservoir from a random unifrom distribution
     W_reservoir = np.random.uniform(bounds[0], bounds[1], (n_reservoir_neurons, n_reservoir_neurons))
 
-    # Create a mask to make W_rservoir a sparse matrix with a density of 20%
+    # Create a mask to make W_reservoir a sparse matrix with a density of 20%
     mask = scipy.sparse.rand(n_reservoir_neurons, n_reservoir_neurons, density=density)
     mask = np.array(mask.todense())
     mask[np.where(mask > 0)] = 1
     W_reservoir = W_reservoir * mask
 
-    # Set the spectral radius of W_reservoir is 0.90
+    # Set the spectral radius of W_reservoir to 0.90
     E, _ = np.linalg.eig(W_reservoir)
     e_max = np.max(np.abs(E))
     W_reservoir /= np.abs(e_max)/spectral_radius
@@ -377,23 +368,21 @@ def generate_Ws(seed=101, density=0.20, spectral_radius=0.9):
     np.save('W_in.npy', W_in)
     np.save('W_reservoir.npy', W_reservoir)
 
-# Command to Run: cd Documents\NCSA\elastica-python-CoRL_cases && venv\Scripts\activate && cd ReacherSoft_Case0-Keshav && python reservoir_rl.py
+# Command to Run: cd Documents\NCSA\git_version\spiking_reservoir_rl_elastica-master && venv\Scripts\activate && cd ReacherSoft_Case0-Keshav && python reservoir_rl.py
 def main():
-    generate_Ws()
+    # Generate W_in and W_reservoir
+    # generate_Ws()
 
-    # Directory cleanup. NOTE: IT WILL DELETE YOUR PREVIOUS RESULTS! BACK THEM UP
-    if os.path.isdir('./cma_es_data'):
-        shutil.rmtree('./cma_es_data')
-
-    # Run CMA-ES
+    # Train: Run CMA-ES
     cma_save_file = ''
     best_W_out = train(cma_save_file)
 
-    # supervised_learning_engine = SupervisedLearningEngine(reservoir_output_file_path='summed_spikes.npy', reload_reservoir_data=True)
-    # supervised_learning_engine.run_linear_regression()
-    # curr_dir = 'C:/Users/kesha/Documents/NCSA/elastica-python-CoRL_cases/ReacherSoft_Case0-Keshav/lin_reg_weights'
+    # Evaluate: Generate video/metadata for a W_out
     # W_out = np.load('best_W_out.npy')
-    # evaluate(W_out, curr_dir=curr_dir)
+    # evaluate(W_out)
+
+    # Plot: Plot CMA-ES simulation data. Currently does not work with saved_cma_es.txt files from Blue Waters.
+    # generate_cma_plots()
 
 if __name__ == "__main__":
     main()

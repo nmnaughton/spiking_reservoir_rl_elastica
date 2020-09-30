@@ -1,4 +1,4 @@
-__doc__ = """This script is to train or run a policy for the arm following randomly moving target. 
+__doc__ = """This script is to train or run a policy for the arm following randomly moving target.
 Case 1 in CoRL 2020 paper."""
 import os
 import numpy as np
@@ -130,9 +130,9 @@ args.beta = 75
 
 # learning step skip
 sim_dt = 2.0e-4
-n_elem = 20 
+n_elem = 20
 RL_dt = 0.01
-num_steps_per_update = np.rint(RL_dt/sim_dt).astype(int) #7 * scale_value # Do we ever want to change this? There is not a good reason to have this value over others. 
+num_steps_per_update = np.rint(RL_dt/sim_dt).astype(int) #7 * scale_value # Do we ever want to change this? There is not a good reason to have this value over others.
 # print(num_steps_per_update)
 
 

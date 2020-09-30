@@ -1,22 +1,11 @@
-/.coveragerc
-/.flake8
-/.pylintrc
-/.travis.yml
-/AUTHORS.md
-/LICENSE
-/Makefile
-/README.md
-/README.rst
-/setup.py
+elastica/__pycache__/
 
-ReacherSoft_Case0-Keshav/SupervisedLearningFiles
+ReacherSoft_Case0/__pycache__/
+ReacherSoft_Case0/MuscleTorquesWithBspline/BsplineMuscleTorques/__pycache__/
 ReacherSoft_Case1/
 ReacherSoft_Case2/
 ReacherSoft_Case3/
 ReacherSoft_Case4/
 
-assets/
-docs/
-examples/
-tests/
 venv/
+./bw_login_instructions.txt

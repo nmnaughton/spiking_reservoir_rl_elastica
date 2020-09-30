@@ -9,5 +9,4 @@ RUN apt install python3-opencv -y
 RUN apt install ffmpeg -y
 
 WORKDIR /src/elastica-rl/ReacherSoft_Case0-Keshav/
-RUN chmod +x ./run.sh
-ENTRYPOINT ["./run.sh"]
+RUN python reservoir_rl.py
