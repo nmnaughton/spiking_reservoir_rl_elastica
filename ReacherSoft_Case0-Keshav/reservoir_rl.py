@@ -12,8 +12,6 @@ import nengo
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy
-# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-# import tensorflow as tf
 
 sys.path.append(os.path.abspath(os.path.join('..', 'elastica')))
 from set_environment import Environment
@@ -297,8 +295,8 @@ def train(cma_save_file=''):
     # CMA-ES parameters
     global weights_size
     initial_step_size = 1.0
-    population_size = 15 # 128
-    num_cma_generations = 15
+    population_size = 128
+    num_cma_generations = 20
 
     cma_engine = CMAEngine(
             weights_size = weights_size,
