@@ -1,11 +1,12 @@
 elastica/__pycache__/
 
-ReacherSoft_Case0/__pycache__/
-ReacherSoft_Case0/MuscleTorquesWithBspline/BsplineMuscleTorques/__pycache__/
+ReacherSoft_Case0-Keshav/MuscleTorquesWithBspline/BsplineMuscleTorques/__pycache__/
+ReacherSoft_Case0-Keshav/__pycache__/
+
 ReacherSoft_Case1/
 ReacherSoft_Case2/
 ReacherSoft_Case3/
 ReacherSoft_Case4/
 
 venv/
-./bw_login_instructions.txt
+bw_login_instructions.txt
