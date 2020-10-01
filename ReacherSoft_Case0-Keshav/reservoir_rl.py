@@ -296,9 +296,9 @@ def fitness_fn(W_out):
 def train(cma_save_file=''):
     # CMA-ES parameters
     global weights_size
-    initial_step_size = 1.0
-    population_size = 128
-    num_cma_generations = 30
+    initial_step_size = 0.33 # 1.0
+    population_size = 512 # 128
+    num_cma_generations = 10 # 20
 
     cma_engine = CMAEngine(
             weights_size = weights_size,
