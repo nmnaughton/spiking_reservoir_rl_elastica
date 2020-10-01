@@ -83,12 +83,12 @@ def plot_video_with_sphere(
         # rod_lines[rod_idx] = ax.plot(inst_position[0], inst_position[1],inst_position[2], "r", lw=0.5)[0]
         inst_com = com_history_unpacker(rod_idx, time_idx)
         # rod_com_lines[rod_idx] = ax.plot(inst_com[0], inst_com[1],inst_com[2], "k--", lw=2.0)[0]
-
+        
         rod_scatters[rod_idx] = ax.scatter(
             inst_position[2],
             inst_position[0],
             inst_position[1],
-            s=np.pi * (scaling_factor * inst_radius) ** 2,
+            s=np.pi * (scaling_factor * inst_radius[0]) ** 2,
         )
 
     sphere_artists = [None for _ in range(n_visualized_spheres)]
@@ -98,7 +98,7 @@ def plot_video_with_sphere(
             sphere_position[2],
             sphere_position[0],
             sphere_position[1],
-            s=np.pi * (scaling_factor * inst_radius) ** 2,
+            s=np.pi * (scaling_factor * inst_radius[0]) ** 2,
         )
         # sphere_radius,
         # color=sphere_cmap(sphere_idx),)

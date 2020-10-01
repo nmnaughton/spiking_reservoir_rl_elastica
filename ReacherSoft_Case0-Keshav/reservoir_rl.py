@@ -8,9 +8,9 @@ from tqdm import tqdm
 import os
 
 import cma
+import matplotlib.pyplot as plt
 import nengo
 import numpy as np
-import matplotlib.pyplot as plt
 import scipy
 
 sys.path.append(os.path.abspath(os.path.join('..', 'elastica')))
@@ -41,6 +41,7 @@ class ReservoirNetworkSimulator:
         self.W_in = np.load('W_in.npy')
         self.W_reservoir = np.load('W_reservoir.npy')
         self.alpha = 0.8 # Leakage rate
+        self._initialize_reservoir()
 
     def _initialize_reservoir(self):
         # Disable nengo cache warnings
@@ -149,6 +150,9 @@ class ReservoirNetworkSimulator:
             if done:
                 break
 
+        avg_tot_reward = tot_reward / (i + 1)
+        print(f"avg_tot_reward: {avg_tot_reward}")
+
         if self.collect_metadata:
             np.save(os.path.join(save_dir, "states.npy"), np.array(states))
             np.save(os.path.join(save_dir, "actions.npy"), np.array(actions))
@@ -167,10 +171,8 @@ class ReservoirNetworkSimulator:
             env.post_processing("video.mp4")
             if save_dir != './':
                 shutil.move("2D_2d_video.mp4", curr_dir)
-                # shutil.move("2D_3d_video.mp4", curr_dir)
+                shutil.move("2D_3d_video.mp4", curr_dir)
 
-        avg_tot_reward = tot_reward / (i + 1)
-        print(f"avg_tot_reward: {avg_tot_reward}")
         return avg_tot_reward
 
     def set_collect_metadata(self, collect_metadata):
@@ -296,7 +298,7 @@ def train(cma_save_file=''):
     global weights_size
     initial_step_size = 1.0
     population_size = 128
-    num_cma_generations = 20
+    num_cma_generations = 30
 
     cma_engine = CMAEngine(
             weights_size = weights_size,

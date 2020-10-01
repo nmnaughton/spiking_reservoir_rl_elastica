@@ -376,7 +376,7 @@ class Environment(gym.Env):
         # from datetime import datetime
         # print(int(datetime.now()))
 
-        
+
 
         # Now rod is ready for simulation, append rod to simulation
         self.simulator.append(self.shearable_rod)
@@ -719,7 +719,7 @@ class Environment(gym.Env):
         # print(self.shearable_rod.dilatation)
         np.seterr(divide='ignore', invalid='ignore')
         avg_kappa_1 = np.zeros(self.number_of_control_points)
-        avg_kappa_2 = np.zeros(self.number_of_control_points) 
+        avg_kappa_2 = np.zeros(self.number_of_control_points)
         #HOT FIX: needed to add kappa for 3d, these two should be refactored to be more consice
         # self.n_elem-1 is number of curvature values due to veroni regions
         avg_length = int((self.n_elem-1)/(self.number_of_control_points) )
@@ -1015,15 +1015,15 @@ class Environment(gym.Env):
                 **kwargs,
             )
 
-            # plot_video_with_sphere(
-            #     [self.post_processing_dict_rod],
-            #     [self.post_processing_dict_sphere],
-            #     video_name="3d_" + filename_video,
-            #     fps=self.rendering_fps,
-            #     step=1,
-            #     vis2D=False,
-            #     **kwargs,
-            # )
+            plot_video_with_sphere(
+                [self.post_processing_dict_rod],
+                [self.post_processing_dict_sphere],
+                video_name="3d_" + filename_video,
+                fps=self.rendering_fps,
+                step=1,
+                vis2D=False,
+                **kwargs,
+            )
 
             if SAVE_DATA == True:
                 import os
