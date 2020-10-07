@@ -139,7 +139,7 @@ if __name__ == "__main__":
     elastica_sim_time = 10
     nengo_sim_time = 0.01
     bounds = [-1, 1]
-    num_elastica_timesteps = int(100 * elastica_sim_time)
+    num_elastica_timesteps = int(elastica_sim_time/nengo_sim_time)
     weights_size = n_reservoir_neurons * output_size
 
     reservoir_network_simulator = ReservoirNetworkSimulator(

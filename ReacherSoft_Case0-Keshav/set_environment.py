@@ -943,12 +943,9 @@ class Environment(gym.Env):
         invalid_values_condition = _isnan_check(self.shearable_rod.position_collection)
 
         if invalid_values_condition == True:
-            # print("   Nan detected, exiting simulation early")
-            self.shearable_rod.position_collection = np.zeros(
-                self.shearable_rod.position_collection.shape
-            )
+            print("   Nan detected, exiting simulation early")
             reward = -100
-            state = self.get_state()
+            state = np.nan_to_num(self.get_state())
             done = True
 
         self.score += reward
