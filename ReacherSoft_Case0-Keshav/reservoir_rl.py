@@ -41,9 +41,9 @@ class ReservoirNetworkSimulator:
         self.W_in = np.load('W_in.npy')
         self.W_reservoir = np.load('W_reservoir.npy')
         self.alpha = 0.8 # Leakage rate
-        self._initialize_reservoir()
+        self.initialize_reservoir()
 
-    def _initialize_reservoir(self):
+    def initialize_reservoir(self):
         # Disable nengo cache warnings
         nengo.rc.set("decoder_cache", "enabled", "False")
 
@@ -93,7 +93,7 @@ class ReservoirNetworkSimulator:
 
     def simulate_network(self, W_out, env, num_elastica_timesteps):
         self.state = env.get_state()
-        self._initialize_reservoir()
+        self.initialize_reservoir()
         tot_reward = 0.0
 
         for i in range(num_elastica_timesteps):
@@ -130,7 +130,7 @@ class ReservoirNetworkSimulator:
             rewards = []
 
         self.state = env.get_state()
-        self._initialize_reservoir()
+        self.initialize_reservoir()
         tot_reward = 0.0
 
         for i in tqdm(range(num_elastica_timesteps)):
@@ -175,9 +175,17 @@ class ReservoirNetworkSimulator:
 
         return avg_tot_reward
 
+    def simulate_network_vanilla(self, state):
+        # Simulate the spiking reservoir and take the output at the last Nengo simulation timestep
+        self.state = state
+        self.sim.run(self.sim_time)
+        reservoir_output = self.sim.data[self.output_probe][-1] * 1e-4
+
+        return reservoir_output
+
     def set_collect_metadata(self, collect_metadata):
         self.collect_metadata = collect_metadata
-        self._initialize_reservoir()
+        self.initialize_reservoir()
 
 class CMAEngine:
     def __init__(self, weights_size, initial_step_size, population_size):
@@ -228,7 +236,7 @@ class CMAEngine:
 
 def get_env(collect_data_for_postprocessing=False):
     return Environment(
-        final_time=5,
+        final_time=20,
         num_steps_per_update=50,
         number_of_control_points=3,
         alpha=75,
@@ -242,17 +250,17 @@ def get_env(collect_data_for_postprocessing=False):
         sim_dt=2.0e-4,
         n_elem=20,
         NU=30,
-        dim=3.0, # 2.0,
+        dim=2.0, # 3.0,
         max_rate_of_change_of_activation=np.infty)
 
 # Reservoir parameters
-input_size = 17 # 14
-output_size = 6 # 3
+input_size = 14 # 17
+output_size = 3 # 6
 n_reservoir_neurons = 512
 sim_time = 0.01
 bounds = [-1, 1]
 action_calculation_method = "full" # "reduced"
-num_coeff_per_action = 5
+num_coeff_per_action = 20
 
 # Changes number of parameters CMA-ES optimizes for and number of reservoir nerons.
 # full = CMA-ES produces full W_out matrix, reduced = CMA-ES produces coefficients for linear recombination
@@ -272,7 +280,7 @@ reservoir_network_simulator = ReservoirNetworkSimulator(
         num_coeff_per_action = num_coeff_per_action,
         n_reservoir_output_neurons = n_reservoir_output_neurons)
 
-num_elastica_timesteps = int(100 * 5) #TODO(kshivvy): Refactor in terms of final episode time (in sec.) and num_steps_per_update
+num_elastica_timesteps = int(100 * 20) #TODO(kshivvy): Refactor in terms of final episode time (in sec.) and num_steps_per_update
 
 def fitness_fn(W_out):
     global reservoir_network_simulator
@@ -371,11 +379,11 @@ def generate_Ws(seed=101, density=0.20, spectral_radius=0.9):
 # Command to Run: cd Documents\NCSA\git_version\spiking_reservoir_rl_elastica-master && venv\Scripts\activate && cd ReacherSoft_Case0-Keshav && python reservoir_rl.py
 def main():
     # Generate W_in and W_reservoir
-    # generate_Ws()
+    generate_Ws()
 
     # Train: Run CMA-ES
-    cma_save_file = ''
-    best_W_out = train(cma_save_file)
+    # cma_save_file = ''
+    # best_W_out = train(cma_save_file)
 
     # Evaluate: Generate video/metadata for a W_out
     # W_out = np.load('best_W_out.npy')

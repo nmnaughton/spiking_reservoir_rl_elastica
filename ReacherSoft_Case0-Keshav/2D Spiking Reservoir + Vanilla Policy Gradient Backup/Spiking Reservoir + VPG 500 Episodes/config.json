@@ -1,0 +1,37 @@
+{
+    "ac_kwargs":	{
+        "hidden_sizes":	[]
+    },
+    "actor_critic":	"mlp_actor_critic",
+    "env_fn":	"<function <lambda> at 0x0000013E60612AE8>",
+    "epochs":	500,
+    "exp_name":	"spinning_up_vpg",
+    "gamma":	0.99,
+    "lam":	0.97,
+    "logger":	{
+        "<spinup.utils.logx.EpochLogger object at 0x0000013E6083CC88>":	{
+            "epoch_dict":	{},
+            "exp_name":	"spinning_up_vpg",
+            "first_row":	true,
+            "log_current_row":	{},
+            "log_headers":	[],
+            "output_dir":	"./",
+            "output_file":	{
+                "<_io.TextIOWrapper name='./progress.txt' mode='w' encoding='cp1252'>":	{
+                    "mode":	"w"
+                }
+            }
+        }
+    },
+    "logger_kwargs":	{
+        "exp_name":	"spinning_up_vpg",
+        "output_dir":	"./"
+    },
+    "max_ep_len":	1000,
+    "pi_lr":	0.01,
+    "save_freq":	10,
+    "seed":	0,
+    "steps_per_epoch":	1000,
+    "train_v_iters":	80,
+    "vf_lr":	0.01
+}
