@@ -201,7 +201,8 @@ class Environment(gym.Env):
         super(Environment, self).__init__()
 
         # This is being set to help with the multiprocessing so you dont get the same initial position
-        np.random.seed(None)
+        # np.random.seed(None) SET TO NONE FOR CMA
+        np.random.seed(0)
 
 
         self.dim = dim
@@ -943,7 +944,7 @@ class Environment(gym.Env):
         invalid_values_condition = _isnan_check(self.shearable_rod.position_collection)
 
         if invalid_values_condition == True:
-            print("   Nan detected, exiting simulation early")
+            #print("   Nan detected, exiting simulation early")
             reward = -100
             state = np.nan_to_num(self.get_state())
             done = True
