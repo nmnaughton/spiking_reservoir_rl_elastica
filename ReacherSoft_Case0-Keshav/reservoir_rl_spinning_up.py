@@ -199,8 +199,8 @@ if __name__ == "__main__":
     seeds = [0]
 
     for seed in seeds:
-        for learning_rate in learning_rates:
-            for hidden_size in hidden_sizes:
+        for hidden_size in hidden_sizes:
+            for learning_rate in learning_rates:
                 for i, activation in enumerate(activations):
                     ac_kwargs['hidden_sizes'] = hidden_size
                     ac_kwargs['activation'] = activation

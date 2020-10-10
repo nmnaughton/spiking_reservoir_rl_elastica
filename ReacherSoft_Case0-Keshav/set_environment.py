@@ -957,16 +957,16 @@ class Environment(gym.Env):
         # print(self.current_step, self.total_learning_steps)
         if self.current_step >= self.total_learning_steps:
             done = True
-            if self.score > 0:
-                print(
-                    " Score greater than 0! Episode score: %0.3f, Distance to target: %0.3f "
-                    % (self.score/self.current_step, dist)
-                )
-            else:
-                print(
-                    " Finished simulation. Episode score: %0.3f, Distance to target: %0.3f"
-                    % (self.score/self.current_step, dist)
-                )
+            # if self.score > 0:
+            #     print(
+            #         " Score greater than 0! Episode score: %0.3f, Distance to target: %0.3f "
+            #         % (self.score/self.current_step, dist)
+            #     )
+            # else:
+            #     print(
+            #         " Finished simulation. Episode score: %0.3f, Distance to target: %0.3f"
+            #         % (self.score/self.current_step, dist)
+            #     )
         """ Done is a boolean to reset the environment before episode is completed """
 
         self.previous_action = action
