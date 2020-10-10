@@ -213,6 +213,7 @@ class Environment(gym.Env):
         self.final_time = final_time
         self.h_time_step = sim_dt  # this is a stable time step
         self.total_steps = int(self.final_time / self.h_time_step)
+        # print('self.total_steps',self.total_steps)
         self.time_step = np.float64(float(self.final_time) / self.total_steps)
         # print("Total steps", self.total_steps)
 
@@ -234,7 +235,7 @@ class Environment(gym.Env):
 
         # learning step define through num_steps_per_update
         self.num_steps_per_update = num_steps_per_update
-        self.total_learning_steps = self.total_steps # int(self.total_steps / self.num_steps_per_update)
+        self.total_learning_steps = int(self.total_steps / self.num_steps_per_update)
         # print("Total learning steps", self.total_learning_steps)
 
         if self.dim == 2.0:
@@ -338,6 +339,8 @@ class Environment(gym.Env):
         -------
 
         """
+        # print('resetting sim env')
+        # print('self.total_steps',self.total_steps)
         self.simulator = BaseSimulator()
 
         # setting up test params
@@ -950,18 +953,20 @@ class Environment(gym.Env):
             done = True
 
         self.score += reward
+        # self.current_step+=1
+        # print(self.current_step, self.total_learning_steps)
         if self.current_step >= self.total_learning_steps:
             done = True
-            # if self.score > 0:
-            #     print(
-            #         " Score greater than 0! Episode score: %0.3f, Distance to target: %0.3f "
-            #         % (self.score, dist)
-            #     )
-            # else:
-            #     print(
-            #         " Finished simulation. Episode score: %0.3f, Distance to target: %0.3f"
-            #         % (self.score, dist)
-            #     )
+            if self.score > 0:
+                print(
+                    " Score greater than 0! Episode score: %0.3f, Distance to target: %0.3f "
+                    % (self.score/self.current_step, dist)
+                )
+            else:
+                print(
+                    " Finished simulation. Episode score: %0.3f, Distance to target: %0.3f"
+                    % (self.score/self.current_step, dist)
+                )
         """ Done is a boolean to reset the environment before episode is completed """
 
         self.previous_action = action

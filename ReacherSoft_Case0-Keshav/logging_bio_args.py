@@ -1,4 +1,4 @@
-__doc__ = """This script is to train or run a policy for the arm following randomly moving target.
+__doc__ = """This script is to train or run a policy for the arm following randomly moving target. 
 Case 1 in CoRL 2020 paper."""
 import os
 import numpy as np
@@ -10,7 +10,7 @@ import argparse
 
 import matplotlib
 
-matplotlib.use("Agg")
+# matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 plt.rcParams["animation.ffmpeg_path"] = "/usr/local/bin/ffmpeg"
@@ -76,7 +76,7 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--timesteps_per_batch", type=int, default=2000,
+    "--timesteps_per_batch", type=int, default=100000,
 )
 
 parser.add_argument(
@@ -85,7 +85,7 @@ parser.add_argument(
 
 args = parser.parse_args()
 
-args.algo_name = "PPO"
+args.algo_name = "SAC"
 args.total_timesteps = 2e5
 
 if args.algo_name == "TRPO":
@@ -120,7 +120,7 @@ args.mode = 4
 # Set simulation final time
 final_time = 10.0
 # Number of control points
-number_of_control_points = 4
+number_of_control_points = 3
 # target position
 target_position = [-0.4, 0.6, 0.0]
 
@@ -130,10 +130,10 @@ args.beta = 75
 
 # learning step skip
 sim_dt = 2.0e-4
-n_elem = 20
+n_elem = 20 
 RL_dt = 0.01
-num_steps_per_update = np.rint(RL_dt/sim_dt).astype(int) #7 * scale_value # Do we ever want to change this? There is not a good reason to have this value over others.
-# print(num_steps_per_update)
+num_steps_per_update = np.rint(RL_dt/sim_dt).astype(int) #7 * scale_value # Do we ever want to change this? There is not a good reason to have this value over others. 
+print('num_steps_per_update',num_steps_per_update)
 
 
 max_rate_of_change_of_activation = np.infty
@@ -158,7 +158,7 @@ env = Environment(
     n_elem=n_elem,
     NU=30,
     num_obstacles=0,
-    dim=2.0,
+    dim=3.0,
     max_rate_of_change_of_activation=max_rate_of_change_of_activation,
 )
 
@@ -173,6 +173,8 @@ if args.TRAIN:
 
 from stable_baselines.results_plotter import ts2xy, plot_results
 from stable_baselines import results_plotter
+import tensorflow as tf
+policy_kwargs = dict(layers=[128, 128, 128, 128])
 
 if args.TRAIN:
     if offpolicy:
@@ -180,20 +182,27 @@ if args.TRAIN:
             items = {
                 "policy": MLP,
                 "buffer_size": int(args.timesteps_per_batch),
-                "learning_starts": int(50e3),
+                "learning_starts": int(1e3),
+
             }
         else:
-            items = {"policy": MLP, "buffer_size": int(args.timesteps_per_batch)}
+            items = {
+            "policy": MLP, 
+            "buffer_size": int(args.timesteps_per_batch)
+            }
     else:
         items = {
             "policy": MLP,
             batchsize: args.timesteps_per_batch,
         }
 
-    model = algo(env=env, verbose=1, seed=args.SEED, **items)
+    model = algo(env=env, verbose=1, seed=1, policy_kwargs=policy_kwargs, **items)
     model.set_env(env)
-
+    print('starting to train')
     model.learn(total_timesteps=int(args.total_timesteps))
+    print(env.score_logging)
+    plt.plot(env.score_logging,'r')
+    plt.show()
     # library helper
     plot_results(
         [log_dir],
