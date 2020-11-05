@@ -145,6 +145,23 @@ def plot(title='Spiking Reservoir + Vanilla Policy Gradient'):
     # plt.savefig(title + '.png')
     plt.show()
 
+def seed_test():
+    env_fn = lambda : get_custom_env()
+    ac_kwargs = dict(hidden_sizes=[])
+
+    seeds = [0, 1, 2, 3, 4]
+    for seed in seeds:
+        logger_kwargs = dict(output_dir='./', exp_name='spiking_reservoir_512_learning_rate_0.01_seed_{seed}_baselie')
+
+        with tf.Graph().as_default():
+            vpg(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=num_elastica_timesteps, epochs=1000, pi_lr=0.01, vf_lr=0.01, seed=seed)
+
+            exp_save_file = f"spiking_reservoir_512_learning_rate_0.01_seed_{seed}_baseline.txt"
+            with open("progress.txt") as f1:
+                with open(exp_save_file, "w") as f2:
+                    for line in f1:
+                        f2.write(line)
+
 def plot_from_rewards_dir():
     reward_dir = './rewards/'
     rewards = []
@@ -200,7 +217,6 @@ def plot_from_rewards_dir():
     plt.show()
 
 if __name__ == "__main__":
-    plot_from_rewards_dir()
     # Reservoir parameters
     dim = 2.0
     num_control_points = 3
@@ -223,10 +239,12 @@ if __name__ == "__main__":
         num_coeff_per_action = 5,
         n_reservoir_output_neurons = n_reservoir_neurons)
 
+    seed_test()
+
     # SpinningUp parameters
-    env_fn = lambda : get_custom_env() #get_elastica_env()
-    logger_kwargs = dict(output_dir='./', exp_name='spiking_reservoir_512_learning_rate_0.01_seed_0_gradient_global_norm_clipping_0.0000005_on_all_tensors')
-    ac_kwargs = dict(hidden_sizes=[])
+    # env_fn = lambda : get_custom_env() #get_elastica_env()
+    # logger_kwargs = dict(output_dir='./', exp_name='spiking_reservoir_512_learning_rate_0.01_seed_0_gradient_global_norm_clipping_0.0000005_on_all_tensors')
+    # ac_kwargs = dict(hidden_sizes=[])
 
     # SAC parameters
     # lr = 0.01
@@ -234,8 +252,8 @@ if __name__ == "__main__":
     # ac_kwargs = dict(hidden_sizes=[3])
 
     # Run SpinningUp reinforcement learning algorithm
-    with tf.Graph().as_default():
-        vpg(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=num_elastica_timesteps, epochs=1000, pi_lr=0.01, vf_lr=0.01, seed=0)
+    # with tf.Graph().as_default():
+    #     vpg(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=num_elastica_timesteps, epochs=1000, pi_lr=0.01, vf_lr=0.01, seed=0)
 
         # Run w/ and w/o grad clipping.
         # vpg(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=2 * num_elastica_timesteps, epochs=500, pi_lr=0.01, vf_lr=0.01, seed=0)
@@ -246,14 +264,13 @@ if __name__ == "__main__":
         # vpg(env_fn=env_fn, logger_kwargs=logger_kwargs, steps_per_epoch=num_elastica_timesteps, epochs=500, seed=0)
         # sac(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=num_elastica_timesteps, epochs=500, lr=lr, num_test_episodes=1)
 
-
     # Generate video off of saved policy
     # _, get_action =  load_policy_and_env(os.path.abspath('./'))
     # env =  get_custom_env(collect_data_for_postprocessing=True) # get_elastica_env(collect_data_for_postprocessing=True)
     # run_policy(env, get_action)
 
     # Plot the rewards and moving average rewards vs. episodes
-    plot()
+    # plot()
     # plot_from_rewards_dir()
 
     # # Hyperparameter search

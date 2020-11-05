@@ -209,16 +209,16 @@ def vpg(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     # Optimizers with gradient global norm clipping
     # Source: https://stackoverflow.com/questions/36498127/how-to-apply-gradient-clipping-in-tensorflow
     # print(tf.trainable_variables())
-    grad_clip_val = 0.0000005
-    optimizer_pi = tf.train.AdamOptimizer(learning_rate=pi_lr)
-    gradients_pi, variables_pi = zip(*optimizer_pi.compute_gradients(pi_loss, var_list=[get_vars('pi/dense/kernel:0'), get_vars('pi/dense/bias:0'), get_vars('pi/log_std:0')]))
-    gradients_pi, _ = tf.clip_by_global_norm(gradients_pi, grad_clip_val)
-    train_pi = optimizer_pi.apply_gradients(zip(gradients_pi, variables_pi))
-
-    optimizer_v = tf.train.AdamOptimizer(learning_rate=vf_lr)
-    gradients_v, variables_v = zip(*optimizer_v.compute_gradients(v_loss, var_list=[get_vars('v/dense/kernel:0'), get_vars('v/dense/bias:0')]))
-    gradients_v, _ = tf.clip_by_global_norm(gradients_v, grad_clip_val)
-    train_v = optimizer_v.apply_gradients(zip(gradients_v, variables_v))
+    # grad_clip_val = 0.0000005
+    # optimizer_pi = tf.train.AdamOptimizer(learning_rate=pi_lr)
+    # gradients_pi, variables_pi = zip(*optimizer_pi.compute_gradients(pi_loss, var_list=[get_vars('pi/dense/kernel:0'), get_vars('pi/dense/bias:0'), get_vars('pi/log_std:0')]))
+    # gradients_pi, _ = tf.clip_by_global_norm(gradients_pi, grad_clip_val)
+    # train_pi = optimizer_pi.apply_gradients(zip(gradients_pi, variables_pi))
+    #
+    # optimizer_v = tf.train.AdamOptimizer(learning_rate=vf_lr)
+    # gradients_v, variables_v = zip(*optimizer_v.compute_gradients(v_loss, var_list=[get_vars('v/dense/kernel:0'), get_vars('v/dense/bias:0')]))
+    # gradients_v, _ = tf.clip_by_global_norm(gradients_v, grad_clip_val)
+    # train_v = optimizer_v.apply_gradients(zip(gradients_v, variables_v))
 
     # Optimizers with gradient clipping by value
     # grad_min_clip = -5.0
