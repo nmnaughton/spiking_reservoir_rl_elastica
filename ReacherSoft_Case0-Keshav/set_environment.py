@@ -145,6 +145,7 @@ class Environment(gym.Env):
         n_elem=40,
         mode=1,
         dim=3.5,
+        seed=0,
         *args,
         **kwargs,
     ):
@@ -199,10 +200,10 @@ class Environment(gym.Env):
 
         """
         super(Environment, self).__init__()
-
+        print("Inside Elastica constructor.")
         # This is being set to help with the multiprocessing so you dont get the same initial position
-        # np.random.seed(None) SET TO NONE FOR CMA
-        np.random.seed(0)
+        np.random.seed(seed) # SET TO NONE FOR CMA
+        # np.random.seed(0)
 
 
         self.dim = dim
@@ -821,6 +822,14 @@ class Environment(gym.Env):
 
         """
 
+        # Action can not be NaN
+        invalid_actions_condition = _isnan_check(action)
+
+        if invalid_actions_condition == True:
+            reward = -100
+            action = np.nan_to_num(action)
+            done = True
+
         # action contains the control points for actuation torques in different directions in range [-1, 1]
         self.action = action
 
@@ -944,10 +953,10 @@ class Environment(gym.Env):
             self.on_goal = 0
 
         # Position of the rod cannot be NaN, it is not valid, stop the simulation
-        invalid_values_condition = _isnan_check(self.shearable_rod.position_collection)
+        invalid_values_condition = _isnan_check(state) # _isnan_check(self.shearable_rod.position_collection)
 
-        if invalid_values_condition == True:
-            #print("   Nan detected, exiting simulation early")
+        if invalid_values_condition == True or invalid_actions_condition == True:
+            # print("   Nan detected, exiting simulation early")
             reward = -100
             state = np.nan_to_num(self.get_state())
             done = True
@@ -969,8 +978,8 @@ class Environment(gym.Env):
             #     )
         """ Done is a boolean to reset the environment before episode is completed """
 
-        self.previous_action = action
-
+        # self.previous_action = action
+        # print(self.action, reward)
         return state, reward, done, {"ctime": self.time_tracker}
 
     def render(self, mode="human"):

@@ -20,6 +20,7 @@ from spinup import vpg_tf1 as vpg
 from spinup import sac_tf1 as sac
 from spinup.utils.run_utils import ExperimentGrid
 from spinup.utils.test_policy import load_policy_and_env, run_policy
+from spinup.utils.mpi_tools import mpi_fork
 
 def get_elastica_env(collect_data_for_postprocessing=False):
     return Environment(
@@ -45,7 +46,7 @@ class CustomEnv(gym.Env):
 
     def __init__(self, dim, num_control_points, n_reservoir_neurons, collect_data_for_postprocessing=False):
         super(CustomEnv).__init__()
-
+        print("Inside CustomEnv constructor")
         self.dim = dim
         self.num_control_points = num_control_points
         self.n_reservoir_neurons = n_reservoir_neurons
@@ -94,12 +95,16 @@ class CustomEnv(gym.Env):
         self.num_steps += 1
         self.total_reward += reward
 
-        if self.num_steps == 999:
-            print(self.total_reward / self.num_steps)
+        if done:
+            print("num_steps: ", self.num_steps)
+            print("total_reward: ", self.total_reward)
+            print("avg_reward: ", self.total_reward / self.num_steps)
 
             if self.collect_data_for_postprocessing:
                 self.elastica_env.close()
                 self.elastica_env.post_processing("video.mp4")
+
+            reward = self.total_reward / self.num_steps
 
         return reservoir_state, reward, done, info
 
@@ -108,7 +113,6 @@ class CustomEnv(gym.Env):
 
 def get_custom_env(collect_data_for_postprocessing=False):
     return CustomEnv(dim, num_control_points, n_reservoir_neurons, collect_data_for_postprocessing)
-
 
 def plot(title='Spiking Reservoir + Vanilla Policy Gradient'):
     # Plot Rewards vs. Episodes
@@ -120,7 +124,7 @@ def plot(title='Spiking Reservoir + Vanilla Policy Gradient'):
             if i == 0:
                 continue
             words = line.split()
-            reward = float(words[1]) / 1000.
+            reward = float(words[1]) / 500. #1000.
             rewards.append(reward)
 
     window_size = 10
@@ -141,14 +145,69 @@ def plot(title='Spiking Reservoir + Vanilla Policy Gradient'):
     # plt.savefig(title + '.png')
     plt.show()
 
+def plot_from_rewards_dir():
+    reward_dir = './rewards/'
+    rewards = []
+    moving_avg_rewards = []
+    legend = []
+
+    x_axis = []
+    for i in range(10, 1001):
+        x_axis.append(i)
+
+    NUM_COLORS = 8 # 20
+
+    cm = plt.get_cmap('gist_rainbow')
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    # ax.set_prop_cycle(color = [cm(1.*i/NUM_COLORS) for i in range(NUM_COLORS)])
+
+    for file_name in os.listdir(reward_dir):
+        legend.append(file_name.replace('.txt', '') + '_avg')
+        # legend.append(file_name.replace('.txt', ''))
+        path = os.path.join(reward_dir, file_name)
+
+        current_rewards = []
+        with open(path, 'r') as fp:
+            lines = fp.readlines()
+            for i, line in enumerate(lines):
+                if i == 0:
+                    continue
+                words = line.split()
+                reward = float(words[1]) / 1000.
+                current_rewards.append(reward)
+
+        window_size = 10
+        rewards_series = pd.Series(current_rewards)
+        windows = rewards_series.rolling(window_size)
+        current_moving_avg_rewards_10 = windows.mean().tolist()[window_size - 1:]
+
+        rewards.append(current_rewards)
+        moving_avg_rewards.append(current_moving_avg_rewards_10)
+
+        plt.plot(x_axis[0:len(current_moving_avg_rewards_10)], current_moving_avg_rewards_10, alpha=0.7)
+        # plt.plot(list(range(len(current_rewards))), current_rewards, alpha=0.7)
+        # plt.plot(current_rewards, alpha=0.7)
+
+    plt.yticks(np.arange(-1.0, 2.1, 0.1))
+    plt.grid(True)
+    plt.legend(legend, prop={"size":5})
+    plt.xlabel('Episode')
+    plt.ylabel('Episode Score')
+    # plt.ylabel('Episode Score (avg. over 1000 Elastica timesteps per episode)')
+    # plt.title('Spiking Reservoir + VPG With Gradient Clipping')
+    # plt.title('Spiking Reservoir + VPG vs Solo VPG Hyperparameter Tuned')
+    plt.show()
+
 if __name__ == "__main__":
+    plot_from_rewards_dir()
     # Reservoir parameters
     dim = 2.0
     num_control_points = 3
     input_size = 11 + num_control_points * int(dim - 1)
     output_size = num_control_points * int(dim - 1)
     n_reservoir_neurons = 512
-    elastica_sim_time = 10
+    elastica_sim_time = 10 # 5
     nengo_sim_time = 0.01
     bounds = [-1, 1]
     num_elastica_timesteps = int(elastica_sim_time/nengo_sim_time)
@@ -165,9 +224,9 @@ if __name__ == "__main__":
         n_reservoir_output_neurons = n_reservoir_neurons)
 
     # SpinningUp parameters
-    # env_fn = lambda : get_custom_env() #get_elastica_env()
-    # logger_kwargs = dict(output_dir='./', exp_name='spinning_up_sac')
-    # ac_kwargs = dict(hidden_sizes=[])
+    env_fn = lambda : get_custom_env() #get_elastica_env()
+    logger_kwargs = dict(output_dir='./', exp_name='spiking_reservoir_512_learning_rate_0.01_seed_0_gradient_global_norm_clipping_0.0000005_on_all_tensors')
+    ac_kwargs = dict(hidden_sizes=[])
 
     # SAC parameters
     # lr = 0.01
@@ -175,8 +234,15 @@ if __name__ == "__main__":
     # ac_kwargs = dict(hidden_sizes=[3])
 
     # Run SpinningUp reinforcement learning algorithm
-    # with tf.Graph().as_default():
-        # vpg(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=num_elastica_timesteps, epochs=500, pi_lr=0.01, vf_lr=0.01, seed=0)
+    with tf.Graph().as_default():
+        vpg(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=num_elastica_timesteps, epochs=1000, pi_lr=0.01, vf_lr=0.01, seed=0)
+
+        # Run w/ and w/o grad clipping.
+        # vpg(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=2 * num_elastica_timesteps, epochs=500, pi_lr=0.01, vf_lr=0.01, seed=0)
+
+        # Need to divide all logged average rewards by 500! AND CHANGE num_elastica_timesteps to = 5
+        # vpg(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=num_elastica_timesteps, epochs=2000, pi_lr=0.01, vf_lr=0.01, seed=0)
+
         # vpg(env_fn=env_fn, logger_kwargs=logger_kwargs, steps_per_epoch=num_elastica_timesteps, epochs=500, seed=0)
         # sac(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=num_elastica_timesteps, epochs=500, lr=lr, num_test_episodes=1)
 
@@ -187,31 +253,32 @@ if __name__ == "__main__":
     # run_policy(env, get_action)
 
     # Plot the rewards and moving average rewards vs. episodes
-    # plot()
+    plot()
+    # plot_from_rewards_dir()
 
-    # Hyperparameter search
-    env_fn = lambda : get_elastica_env()
-    ac_kwargs = dict()
-    hidden_sizes = [[512], [256, 256], [128, 128, 128, 128]]
-    activations = [tf.tanh, tf.nn.relu]
-    activations_str = ["tanh", "relu"]
-    learning_rates = [0.01, 0.001]
-    seeds = [0]
-
-    for seed in seeds:
-        for hidden_size in hidden_sizes:
-            for learning_rate in learning_rates:
-                for i, activation in enumerate(activations):
-                    ac_kwargs['hidden_sizes'] = hidden_size
-                    ac_kwargs['activation'] = activation
-                    activation_str = activations_str[i]
-                    logger_kwargs = dict(output_dir='./', exp_name='vpg_hyperparam_test')
-
-                    with tf.Graph().as_default():
-                        vpg(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=num_elastica_timesteps, epochs=1000, seed=seed, pi_lr=learning_rate, vf_lr=learning_rate)
-
-                    exp_save_file = f"hidden_size_{hidden_size}_activation_{activation_str}_learning_rate_{learning_rate}_seed{seed}.txt"
-                    with open("progress.txt") as f1:
-                        with open(exp_save_file, "w") as f2:
-                            for line in f1:
-                                f2.write(line)
+    # # Hyperparameter search
+    # env_fn = lambda : get_elastica_env()
+    # ac_kwargs = dict()
+    # hidden_sizes = [[128, 128, 128, 128]]
+    # activations = [tf.tanh, tf.nn.relu]
+    # activations_str = ["tanh", "relu"]
+    # learning_rates = [0.01]
+    # seeds = [0]
+    #
+    # for seed in seeds:
+    #     for hidden_size in hidden_sizes:
+    #         for learning_rate in learning_rates:
+    #             for i, activation in enumerate(activations):
+    #                 ac_kwargs['hidden_sizes'] = hidden_size
+    #                 ac_kwargs['activation'] = activation
+    #                 activation_str = activations_str[i]
+    #                 logger_kwargs = dict(output_dir='./', exp_name='vpg_hyperparam_test')
+    #
+    #                 with tf.Graph().as_default():
+    #                     vpg(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=num_elastica_timesteps, epochs=1000, seed=seed, pi_lr=learning_rate, vf_lr=learning_rate)
+    #
+    #                 exp_save_file = f"hidden_size_{hidden_size}_activation_{activation_str}_learning_rate_{learning_rate}_seed{seed}.txt"
+    #                 with open("progress.txt") as f1:
+    #                     with open(exp_save_file, "w") as f2:
+    #                         for line in f1:
+    #                             f2.write(line)

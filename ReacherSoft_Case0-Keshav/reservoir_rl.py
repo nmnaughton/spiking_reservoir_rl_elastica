@@ -52,6 +52,7 @@ class ReservoirNetworkSimulator:
 
         with self.network:
             def func(time):
+                # print(self.state)
                 return self.state * 2000
 
             W_reservoir_sparse = scipy.sparse.find(self.W_reservoir)
@@ -59,7 +60,7 @@ class ReservoirNetworkSimulator:
             W_reservoir_sparse_nengo = nengo.Sparse(self.W_reservoir.shape, indicies, W_reservoir_sparse[2])
 
             input_layer = nengo.Node(output=func, size_in=0, size_out=self.input_size)
-            reservoir = nengo.Ensemble(n_neurons=self.n_neurons, dimensions=self.input_size, neuron_type=nengo.LIF())
+            reservoir = nengo.Ensemble(n_neurons=self.n_neurons, dimensions=self.input_size, neuron_type=nengo.LIF()) #neuron_type=nengo.Tanh())#
             conn_in = nengo.Connection(input_layer, reservoir.neurons, synapse=None, transform=self.W_in)
             conn_res = nengo.Connection(reservoir.neurons, reservoir.neurons, transform=W_reservoir_sparse_nengo)
             self.output_probe = nengo.Probe(reservoir.neurons, 'output', synapse=0.01, sample_every=self.sim_time)
@@ -101,6 +102,7 @@ class ReservoirNetworkSimulator:
 
             # Take the output at the last Nengo simulation timestep
             reservoir_output = self.sim.data[self.output_probe][-1] * 1e-4
+            print(reservoir_output)
 
             # Logic for using alpha (leakage rate).
             # if len(reservoir_state) == 0:
@@ -180,7 +182,6 @@ class ReservoirNetworkSimulator:
         self.state = state
         self.sim.run(self.sim_time)
         reservoir_output = self.sim.data[self.output_probe][-1] * 1e-4
-
         return reservoir_output
 
     def set_collect_metadata(self, collect_metadata):
@@ -357,6 +358,7 @@ def generate_cma_plots(load_dir='./', save_dir='./'):
 def generate_Ws(seed=101, density=0.20, spectral_radius=0.9):
     np.random.seed(seed)
     W_in = np.random.uniform(bounds[0], bounds[1], (n_reservoir_neurons, input_size))
+    # W_in /= input_size
 
     # Sample W_reservoir from a random unifrom distribution
     W_reservoir = np.random.uniform(bounds[0], bounds[1], (n_reservoir_neurons, n_reservoir_neurons))
@@ -371,6 +373,7 @@ def generate_Ws(seed=101, density=0.20, spectral_radius=0.9):
     E, _ = np.linalg.eig(W_reservoir)
     e_max = np.max(np.abs(E))
     W_reservoir /= np.abs(e_max)/spectral_radius
+    # W_reservoir /= n_reservoir_neurons
 
     # Save W_in and W_reservoir to file
     np.save('W_in.npy', W_in)

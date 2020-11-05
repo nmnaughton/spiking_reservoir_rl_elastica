@@ -3,6 +3,7 @@ import tensorflow as tf
 import gym
 import time
 import spinup.algos.tf1.vpg.core as core
+from spinup.algos.tf1.vpg.core import get_vars
 from spinup.utils.logx import EpochLogger
 from spinup.utils.mpi_tf import MpiAdamOptimizer, sync_all_params
 from spinup.utils.mpi_tools import mpi_fork, mpi_avg, proc_id, mpi_statistics_scalar, num_procs
@@ -193,8 +194,45 @@ def vpg(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     approx_ent = tf.reduce_mean(-logp)                  # a sample estimate for entropy, also easy to compute
 
     # Optimizers
-    train_pi = MpiAdamOptimizer(learning_rate=pi_lr, amsgrad=True).minimize(pi_loss)
-    train_v = MpiAdamOptimizer(learning_rate=vf_lr, amsgrad=True).minimize(v_loss)
+    # train_pi = MpiAdamOptimizer(learning_rate=pi_lr).minimize(pi_loss)
+    # train_v = MpiAdamOptimizer(learning_rate=vf_lr).minimize(v_loss)
+
+    # train_pi = tf.train.GradientDescentOptimizer(learning_rate=pi_lr).minimize(pi_loss)
+    # train_v = tf.train.GradientDescentOptimizer(learning_rate=vf_lr).minimize(v_loss)
+
+    # train_pi = tf.train.MomentumOptimizer(learning_rate=pi_lr, momentum=0.9).minimize(pi_loss)
+    # train_v = tf.train.MomentumOptimizer(learning_rate=vf_lr, momentum=0.9).minimize(v_loss)
+
+    train_pi = tf.train.AdamOptimizer(learning_rate=pi_lr).minimize(pi_loss)
+    train_v = tf.train.AdamOptimizer(learning_rate=vf_lr).minimize(v_loss)
+
+    # Optimizers with gradient global norm clipping
+    # Source: https://stackoverflow.com/questions/36498127/how-to-apply-gradient-clipping-in-tensorflow
+    # print(tf.trainable_variables())
+    grad_clip_val = 0.0000005
+    optimizer_pi = tf.train.AdamOptimizer(learning_rate=pi_lr)
+    gradients_pi, variables_pi = zip(*optimizer_pi.compute_gradients(pi_loss, var_list=[get_vars('pi/dense/kernel:0'), get_vars('pi/dense/bias:0'), get_vars('pi/log_std:0')]))
+    gradients_pi, _ = tf.clip_by_global_norm(gradients_pi, grad_clip_val)
+    train_pi = optimizer_pi.apply_gradients(zip(gradients_pi, variables_pi))
+
+    optimizer_v = tf.train.AdamOptimizer(learning_rate=vf_lr)
+    gradients_v, variables_v = zip(*optimizer_v.compute_gradients(v_loss, var_list=[get_vars('v/dense/kernel:0'), get_vars('v/dense/bias:0')]))
+    gradients_v, _ = tf.clip_by_global_norm(gradients_v, grad_clip_val)
+    train_v = optimizer_v.apply_gradients(zip(gradients_v, variables_v))
+
+    # Optimizers with gradient clipping by value
+    # grad_min_clip = -5.0
+    # grad_max_clip = 5.0
+    #
+    # optimizer = tf.train.AdamOptimizer(learning_rate=pi_lr)
+    # gvs = optimizer.compute_gradients(pi_loss, var_list=get_vars('pi/dense/kernel:0'))
+    # capped_gvs = [(tf.clip_by_value(grad, grad_min_clip, grad_max_clip), var) for grad, var in gvs]
+    # train_pi = optimizer.apply_gradients(capped_gvs)
+    #
+    # optimizer_v = tf.train.AdamOptimizer(learning_rate=vf_lr)
+    # gvs_v = optimizer_v.compute_gradients(v_loss, var_list=get_vars('v/dense/kernel:0'))
+    # capped_gvs_v = [(tf.clip_by_value(grad, grad_min_clip, grad_max_clip), var) for grad, var in gvs_v]
+    # train_v = optimizer_v.apply_gradients(capped_gvs_v)
 
     sess = tf.Session()
     sess.run(tf.global_variables_initializer())
