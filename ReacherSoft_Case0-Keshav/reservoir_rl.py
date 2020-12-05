@@ -18,7 +18,7 @@ from set_environment import Environment
 
 class ReservoirNetworkSimulator:
     def __init__(self, input_size, n_neurons, output_size, sim_time,
-                 bounds, action_calculation_method,
+                 action_calculation_method,
                  n_reservoir_output_neurons=None,
                  num_coeff_per_action=None):
         self.sim_time = sim_time
@@ -255,8 +255,8 @@ def get_env(collect_data_for_postprocessing=False):
         max_rate_of_change_of_activation=np.infty)
 
 # Reservoir parameters
-input_size = 14 # 17
-output_size = 3 # 6
+input_size = 14 # 5 # 17
+output_size = 3 # 1 # 6
 n_reservoir_neurons = 512
 sim_time = 0.01
 bounds = [-1, 1]
@@ -276,7 +276,6 @@ reservoir_network_simulator = ReservoirNetworkSimulator(
         n_neurons = n_reservoir_neurons,
         output_size = output_size,
         sim_time = sim_time,
-        bounds = bounds,
         action_calculation_method = action_calculation_method,
         num_coeff_per_action = num_coeff_per_action,
         n_reservoir_output_neurons = n_reservoir_output_neurons)

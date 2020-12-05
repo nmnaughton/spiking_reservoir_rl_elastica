@@ -87,7 +87,7 @@ class VPGBuffer:
 
 def vpg(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         steps_per_epoch=4000, epochs=50, gamma=0.99, pi_lr=3e-4,
-        vf_lr=1e-3, train_v_iters=80, lam=0.97, max_ep_len=1000,
+        vf_lr=1e-3, beta1=0.9, train_v_iters=80, lam=0.97, max_ep_len=1000,
         logger_kwargs=dict(), save_freq=10):
     """
     Vanilla Policy Gradient
@@ -149,9 +149,12 @@ def vpg(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             the current policy and value function.
 
     """
-
     logger = EpochLogger(**logger_kwargs)
     logger.save_config(locals())
+
+    # Tensorboard Source: https://medium.com/analytics-vidhya/basics-of-using-tensorboard-in-tensorflow-1-2-b715b068ac5a
+    # Upload Tensorboard to share: https://tensorboard.dev/
+    writer = tf.summary.FileWriter('./logs')
 
     seed += 10000 * proc_id()
     tf.set_random_seed(seed)
@@ -203,22 +206,47 @@ def vpg(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     # train_pi = tf.train.MomentumOptimizer(learning_rate=pi_lr, momentum=0.9).minimize(pi_loss)
     # train_v = tf.train.MomentumOptimizer(learning_rate=vf_lr, momentum=0.9).minimize(v_loss)
 
-    train_pi = tf.train.AdamOptimizer(learning_rate=pi_lr).minimize(pi_loss)
-    train_v = tf.train.AdamOptimizer(learning_rate=vf_lr).minimize(v_loss)
+    # train_pi = tf.train.AdamOptimizer(learning_rate=pi_lr, beta1=beta1).minimize(pi_loss)
+    # train_v = tf.train.AdamOptimizer(learning_rate=vf_lr, beta1=beta1).minimize(v_loss)
+
+    # Decay learning rate
+    global_step_pi = tf.Variable(0, trainable=False)
+    global_step_vf = tf.Variable(0, trainable=False)
+    decayed_pi_lr = tf.train.exponential_decay(pi_lr, global_step_pi, 10000, 0.95, staircase=False)
+    decayed_vf_lr = tf.train.exponential_decay(vf_lr, global_step_vf, 10000, 0.95, staircase=False)
+    # train_pi = tf.train.AdamOptimizer(learning_rate=decayed_pi_lr).minimize(pi_loss, global_step=global_step_pi)
+    # train_v = tf.train.AdamOptimizer(learning_rate=decayed_vf_lr).minimize(v_loss, global_step=global_step_vf)
 
     # Optimizers with gradient global norm clipping
     # Source: https://stackoverflow.com/questions/36498127/how-to-apply-gradient-clipping-in-tensorflow
+    # Source: https://stackoverflow.com/questions/45473682/difference-between-apply-gradients-and-minimize-of-optimizer-in-tensorflow
     # print(tf.trainable_variables())
-    # grad_clip_val = 0.0000005
-    # optimizer_pi = tf.train.AdamOptimizer(learning_rate=pi_lr)
-    # gradients_pi, variables_pi = zip(*optimizer_pi.compute_gradients(pi_loss, var_list=[get_vars('pi/dense/kernel:0'), get_vars('pi/dense/bias:0'), get_vars('pi/log_std:0')]))
-    # gradients_pi, _ = tf.clip_by_global_norm(gradients_pi, grad_clip_val)
-    # train_pi = optimizer_pi.apply_gradients(zip(gradients_pi, variables_pi))
-    #
-    # optimizer_v = tf.train.AdamOptimizer(learning_rate=vf_lr)
-    # gradients_v, variables_v = zip(*optimizer_v.compute_gradients(v_loss, var_list=[get_vars('v/dense/kernel:0'), get_vars('v/dense/bias:0')]))
-    # gradients_v, _ = tf.clip_by_global_norm(gradients_v, grad_clip_val)
-    # train_v = optimizer_v.apply_gradients(zip(gradients_v, variables_v))
+    grad_clip_val = 0.00001 # 0.0001
+
+    optimizer_pi = tf.train.AdamOptimizer(learning_rate=decayed_pi_lr)
+    gradients_pi, variables_pi = zip(*optimizer_pi.compute_gradients(pi_loss, var_list=[get_vars('pi/dense/kernel:0'), get_vars('pi/dense/bias:0'), get_vars('pi/log_std:0')]))
+    gradients_pi, _ = tf.clip_by_global_norm(gradients_pi, grad_clip_val)
+    train_pi = optimizer_pi.apply_gradients(zip(gradients_pi, variables_pi), global_step=global_step_pi)
+
+    optimizer_v = tf.train.AdamOptimizer(learning_rate=decayed_vf_lr)
+    gradients_v, variables_v = zip(*optimizer_v.compute_gradients(v_loss, var_list=[get_vars('v/dense/kernel:0'), get_vars('v/dense/bias:0')]))
+    gradients_v, _ = tf.clip_by_global_norm(gradients_v, grad_clip_val)
+    train_v = optimizer_v.apply_gradients(zip(gradients_v, variables_v), global_step=global_step_vf)
+
+    # Generate summary histograms for tensorboard
+    pi_kernel_summary = tf.summary.histogram('pi_kernel', variables_pi[0])
+    pi_kernel_grad_summary = tf.summary.histogram('pi_kernel_grad', gradients_pi[0])
+    pi_bias_summary = tf.summary.histogram('pi_bias', variables_pi[1])
+    pi_bias_grad_summary = tf.summary.histogram('pi_bias_grad', gradients_pi[1])
+    pi_log_std_summary = tf.summary.histogram('pi_log_std', variables_pi[2])
+    pi_log_std_grad_summary = tf.summary.histogram('pi_log_std_grad', gradients_pi[2])
+
+    vf_kernel_summary = tf.summary.histogram('vf_kernel', variables_v[0])
+    vf_kernel_grad_summary = tf.summary.histogram('vf_kernel_grad', gradients_v[0])
+    vf_bias_summary = tf.summary.histogram('vf_bias', variables_v[1])
+    vf_bias_grad_summary = tf.summary.histogram('vf_bias_grad', gradients_v[1])
+
+    merged_summary_op = tf.summary.merge_all()
 
     # Optimizers with gradient clipping by value
     # grad_min_clip = -5.0
@@ -237,13 +265,13 @@ def vpg(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     sess = tf.Session()
     sess.run(tf.global_variables_initializer())
 
-    # Sync params across processes
-    sess.run(sync_all_params())
+    # Sync params across processes # TODO: Do we need this?
+    # sess.run(sync_all_params())
 
     # Setup model saving
     logger.setup_tf_saver(sess, inputs={'x': x_ph}, outputs={'pi': pi, 'v': v})
 
-    def update():
+    def update(epoch):
         inputs = {k:v for k,v in zip(all_phs, buf.get())}
         pi_l_old, v_l_old, ent = sess.run([pi_loss, v_loss, approx_ent], feed_dict=inputs)
 
@@ -260,6 +288,9 @@ def vpg(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                      KL=kl, Entropy=ent,
                      DeltaLossPi=(pi_l_new - pi_l_old),
                      DeltaLossV=(v_l_new - v_l_old))
+
+        # Write to tensorboard
+        writer.add_summary(sess.run(merged_summary_op, feed_dict=inputs), global_step=epoch)
 
     start_time = time.time()
     o, ep_ret, ep_len = env.reset(), 0, 0
@@ -297,7 +328,7 @@ def vpg(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             logger.save_state({'env': env}, None)
 
         # Perform VPG update!
-        update()
+        update(epoch)
 
         # Log info about epoch
         logger.log_tabular('Epoch', epoch)
@@ -314,6 +345,8 @@ def vpg(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         logger.log_tabular('Time', time.time()-start_time)
         logger.dump_tabular()
 
+    writer.flush()
+    writer.close()
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
