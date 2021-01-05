@@ -4,8 +4,8 @@ import scipy.sparse
 def generate_Ws(seed=101, density=0.20, spectral_radius=0.9):
 
     bounds = [-1, 1]
-    n_reservoir_neurons = 2048 # 512
-    input_size = 14 # 5
+    n_reservoir_neurons = 512
+    input_size = 17 # 14 # 5
     output_size = 3 # 1
 
     np.random.seed(seed)

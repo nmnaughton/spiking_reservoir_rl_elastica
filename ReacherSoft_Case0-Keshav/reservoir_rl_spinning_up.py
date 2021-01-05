@@ -182,7 +182,7 @@ def get_custom_elastica_env(collect_data_for_postprocessing=False):
 def get_custom_pendulum_env(collect_data_for_postprocessing=False):
     return CustomPendulumEnv(collect_data_for_postprocessing)
 
-def plot(title='Spiking Reservoir + Vanilla Policy Gradient', plot_min_max=False, batch_size=2000):
+def plot(title='Spiking Reservoir + Vanilla Policy Gradient', plot_min_max=False, batch_size=4000):
     # Plot Rewards vs. Episodes
     rewards = []
 
@@ -251,47 +251,6 @@ def plot_pendulum():
     # plt.title('spiking_reservoir_512_learning_rate_0.01_seed_0_batch_size_2000_gradient_global_norm_clipping_0.00001_on_all_tensors')
     # plt.savefig(title + '.png')
     plt.show()
-
-def seed_test():
-    env_fn = lambda : get_custom_env()
-    ac_kwargs = dict(hidden_sizes=[])
-
-    seeds = [0, 1, 2, 3, 4]
-    for seed in seeds:
-        logger_kwargs = dict(output_dir='./', exp_name='spiking_reservoir_512_learning_rate_0.01_seed_{seed}_baselie')
-
-        with tf.Graph().as_default():
-            vpg(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=num_elastica_timesteps, epochs=1000, pi_lr=0.01, vf_lr=0.01, seed=seed)
-
-            exp_save_file = f"spiking_reservoir_512_learning_rate_0.01_seed_{seed}_baseline.txt"
-            with open("progress.txt") as f1:
-                with open(exp_save_file, "w") as f2:
-                    for line in f1:
-                        f2.write(line)
-
-def batch_size_test():
-    # Run batch size experiment
-    env_fn = lambda : get_custom_env()
-    ac_kwargs = dict(hidden_sizes=[])
-
-    # batch_size_multipliers = [1, 2, 3, 4, 8, 16, 32, 64, 128]
-    batch_size_multipliers = [1]
-
-    for multiplier in batch_size_multipliers:
-
-        batch_size = int(multiplier * num_elastica_timesteps)
-        episodes = int(1000 / multiplier) + 1
-        exp_name = f'spiking_reservoir_512_learning_rate_0.01_seed_0_batch_size_{batch_size}_gradient_global_norm_clipping_0.00001_on_all_tensors'
-
-        with open("logging.txt", "a") as f:
-            f.write(f"exp_name: {exp_name}\n")
-
-        logger_kwargs = dict(output_dir='./', exp_name=exp_name)
-
-        with tf.Graph().as_default():
-            vpg(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=batch_size, epochs=episodes, pi_lr=0.01, vf_lr=0.01, seed=0)
-
-    plot_from_logging_file()
 
 def plot_from_logging_file():
     legend = []
@@ -392,6 +351,47 @@ def plot_from_rewards_dir(pendulum_rewards=False):
     # plt.title('Spiking Reservoir + VPG vs Solo VPG Hyperparameter Tuned')
     plt.show()
 
+def seed_test():
+    env_fn = lambda : get_custom_env()
+    ac_kwargs = dict(hidden_sizes=[])
+
+    seeds = [0, 1, 2, 3, 4]
+    for seed in seeds:
+        logger_kwargs = dict(output_dir='./', exp_name='spiking_reservoir_512_learning_rate_0.01_seed_{seed}_baselie')
+
+        with tf.Graph().as_default():
+            vpg(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=num_elastica_timesteps, epochs=1000, pi_lr=0.01, vf_lr=0.01, seed=seed)
+
+            exp_save_file = f"spiking_reservoir_512_learning_rate_0.01_seed_{seed}_baseline.txt"
+            with open("progress.txt") as f1:
+                with open(exp_save_file, "w") as f2:
+                    for line in f1:
+                        f2.write(line)
+
+def batch_size_test():
+    # Run batch size experiment
+    env_fn = lambda : get_custom_env()
+    ac_kwargs = dict(hidden_sizes=[])
+
+    # batch_size_multipliers = [1, 2, 3, 4, 8, 16, 32, 64, 128]
+    batch_size_multipliers = [1]
+
+    for multiplier in batch_size_multipliers:
+
+        batch_size = int(multiplier * num_elastica_timesteps)
+        episodes = int(1000 / multiplier) + 1
+        exp_name = f'spiking_reservoir_512_learning_rate_0.01_seed_0_batch_size_{batch_size}_gradient_global_norm_clipping_0.00001_on_all_tensors'
+
+        with open("logging.txt", "a") as f:
+            f.write(f"exp_name: {exp_name}\n")
+
+        logger_kwargs = dict(output_dir='./', exp_name=exp_name)
+
+        with tf.Graph().as_default():
+            vpg(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=batch_size, epochs=episodes, pi_lr=0.01, vf_lr=0.01, seed=0)
+
+    plot_from_logging_file()
+
 def train_on_pendulum():
     # SpinningUp parameters
     env_fn = lambda : get_custom_pendulum_env()
@@ -442,11 +442,11 @@ def train_on_pendulum_baseline_rl_algos():
 
 if __name__ == "__main__":
     # Reservoir parameters
-    dim = 2.0
+    dim = 3.0 # 2.0
     num_control_points = 3
     input_size = 11 + num_control_points * int(dim - 1)
     output_size = num_control_points * int(dim - 1)
-    n_reservoir_neurons = 2048 # 512
+    n_reservoir_neurons = 512 #2048
     elastica_sim_time = 10 # 5
     nengo_sim_time = 0.01
     num_elastica_timesteps = int(elastica_sim_time/nengo_sim_time)
@@ -469,12 +469,12 @@ if __name__ == "__main__":
 
     # SpinningUp parameters
     env_fn = lambda : get_custom_elastica_env()
-    logger_kwargs = dict(output_dir='./', exp_name='spiking_reservoir_2048_learning_rate_0.01_seed_0_batch_size_2000_gradient_global_norm_clipping_0.00001_on_all_tensors_epochs_1500')
+    logger_kwargs = dict(output_dir='./', exp_name='spiking_reservoir_512_learning_rate_0.01_seed_0_batch_size_4000_gradient_global_norm_clipping_0.00001_on_all_tensors_epochs_1500')
     ac_kwargs = dict(hidden_sizes=[])
 
     # Run SpinningUp reinforcement learning algorithm
     with tf.Graph().as_default():
-        vpg(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=num_elastica_timesteps * 2, epochs=1500, pi_lr=0.01, vf_lr=0.01, seed=0)
+        vpg(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=num_elastica_timesteps * 4, epochs=1500, pi_lr=0.01, vf_lr=0.01, seed=0)
 
         # Run w/ and w/o grad clipping.
         # vpg(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=3 * num_elastica_timesteps, epochs=500, pi_lr=0.01, vf_lr=0.01, seed=0)

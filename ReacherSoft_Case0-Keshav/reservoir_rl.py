@@ -255,9 +255,9 @@ def get_env(collect_data_for_postprocessing=False):
         max_rate_of_change_of_activation=np.infty)
 
 # Reservoir parameters
-input_size = 14 # 5 # 17
-output_size = 3 # 1 # 6
-n_reservoir_neurons = 2048 # 512
+input_size = 17 # 14 # 5
+output_size = 6 # 3 # 1
+n_reservoir_neurons = 512
 sim_time = 0.01
 bounds = [-1, 1]
 action_calculation_method = "full" # "reduced"
