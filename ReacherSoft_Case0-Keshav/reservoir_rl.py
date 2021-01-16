@@ -10,6 +10,8 @@ import os
 import cma
 import matplotlib.pyplot as plt
 import nengo
+import nengo_loihi
+nengo_loihi.set_defaults()
 import numpy as np
 import scipy
 
@@ -26,6 +28,7 @@ class ReservoirNetworkSimulator:
         self.n_neurons = n_neurons
         self.n_reservoir_output_neurons = n_reservoir_output_neurons
         self.output_size = output_size
+        self.sim = None
 
         # full = CMA-ES produces full W_out matrix, reduced = CMA-ES produces coefficients for linear recombination
         self.action_calculation_methods = ["full", "reduced"]
@@ -42,18 +45,24 @@ class ReservoirNetworkSimulator:
         self.W_reservoir = np.load('W_reservoir.npy')
         self.alpha = 0.8 # Leakage rate
         self.initialize_reservoir()
+        self.reservoir_output = np.zeros(512)
 
     def initialize_reservoir(self):
         # Disable nengo cache warnings
         nengo.rc.set("decoder_cache", "enabled", "False")
 
+        if self.sim:
+          self.sim.close()
+
         self.state = np.zeros(self.input_size)
         self.network = nengo.Network(seed = self.seed)
 
         with self.network:
-            def func(time):
-                # print(self.state)
+            def func(t):
                 return self.state * 2000
+
+            def process_data(t, x):
+                self.reservoir_output = x * 1e-4
 
             W_reservoir_sparse = scipy.sparse.find(self.W_reservoir)
             indicies = np.array([W_reservoir_sparse[0], W_reservoir_sparse[1]]).T
@@ -63,13 +72,17 @@ class ReservoirNetworkSimulator:
             reservoir = nengo.Ensemble(n_neurons=self.n_neurons, dimensions=self.input_size, neuron_type=nengo.LIF()) #neuron_type=nengo.Tanh())#
             conn_in = nengo.Connection(input_layer, reservoir.neurons, synapse=None, transform=self.W_in)
             conn_res = nengo.Connection(reservoir.neurons, reservoir.neurons, transform=W_reservoir_sparse_nengo)
-            self.output_probe = nengo.Probe(reservoir.neurons, 'output', synapse=0.01, sample_every=self.sim_time)
+            
+            process_node = nengo.Node(output=process_data, size_in=self.n_neurons)
+            conn_proc = nengo.Connection(reservoir.neurons, process_node, synapse=0.01)
+            # self.output_probe = nengo.Probe(reservoir.neurons, 'output', synapse=0.01)
 
             if self.collect_metadata:
-                self.spikes_probe = nengo.Probe(reservoir.neurons, sample_every=self.sim_time)
-                self.voltage_probe = nengo.Probe(reservoir.neurons, 'voltage', synapse=0.01, sample_every=self.sim_time)
+                self.spikes_probe = nengo.Probe(reservoir.neurons)
+                self.voltage_probe = nengo.Probe(reservoir.neurons, 'voltage', synapse=0.01)
 
-        self.sim = nengo.Simulator(self.network, progress_bar=False)
+        # self.sim = nengo.Simulator(self.network, progress_bar=False)
+        self.sim = nengo_loihi.Simulator(self.network, progress_bar=False)
 
     def _get_action_matrix_multiplication(self, reservoir_output, W_out):
         W_out = W_out.reshape((self.output_size, self.n_neurons))
@@ -153,7 +166,7 @@ class ReservoirNetworkSimulator:
                 break
 
         avg_tot_reward = tot_reward / (i + 1)
-        print(f"avg_tot_reward: {avg_tot_reward}")
+        print("avg_tot_reward: ", avg_tot_reward)
 
         if self.collect_metadata:
             np.save(os.path.join(save_dir, "states.npy"), np.array(states))
@@ -179,10 +192,9 @@ class ReservoirNetworkSimulator:
 
     def simulate_network_vanilla(self, state):
         # Simulate the spiking reservoir and take the output at the last Nengo simulation timestep
-        self.state = state
         self.sim.run(self.sim_time)
-        reservoir_output = self.sim.data[self.output_probe][-1] * 1e-4
-        return reservoir_output
+        # print(self.reservoir_output)
+        return self.reservoir_output
 
     def set_collect_metadata(self, collect_metadata):
         self.collect_metadata = collect_metadata
@@ -255,8 +267,8 @@ def get_env(collect_data_for_postprocessing=False):
         max_rate_of_change_of_activation=np.infty)
 
 # Reservoir parameters
-input_size = 17 # 14 # 5
-output_size = 6 # 3 # 1
+input_size = 14 # 17 # 5
+output_size = 3 # 6 # 1
 n_reservoir_neurons = 512
 sim_time = 0.01
 bounds = [-1, 1]
@@ -297,7 +309,7 @@ def fitness_fn(W_out):
     mean_accumulated_reward /= num_trials
     # print(f"mean_accumulated_reward: {mean_accumulated_reward}")
     with open("logging.txt", "a") as myfile:
-        myfile.write(f"mean_accumulated_reward: {mean_accumulated_reward}\n")
+        myfile.write("mean_accumulated_reward: " + str(mean_accumulated_reward) + "\n")
     fitness = -1.0 * mean_accumulated_reward
     return fitness
 

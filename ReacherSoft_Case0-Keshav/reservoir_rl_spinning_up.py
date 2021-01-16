@@ -16,6 +16,9 @@ from set_environment import Environment
 import matplotlib.pyplot as plt
 import gym
 from gym import spaces
+import nengo_loihi
+from nxsdk.logutils.nxlogging import set_verbosity, LoggingLevel
+set_verbosity(LoggingLevel.WARNING)
 import pandas as pd
 import pybulletgym
 from spinup import vpg_tf1 as vpg
@@ -100,12 +103,13 @@ class CustomEnv(gym.Env):
         reservoir_state = reservoir_network_simulator.simulate_network_vanilla(rod_state)
         self.num_steps += 1
         self.total_reward += reward
-
+        # print(reward)
         if done:
             print("num_steps: ", self.num_steps)
             print("total_reward: ", self.total_reward)
             avg_reward = self.total_reward / self.num_steps
             print("avg_reward: ", avg_reward)
+            print('\n')
 
             with open("logging.txt", "a") as f:
                 f.write(str(avg_reward) + '\n')
@@ -362,7 +366,7 @@ def seed_test():
         with tf.Graph().as_default():
             vpg(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=num_elastica_timesteps, epochs=1000, pi_lr=0.01, vf_lr=0.01, seed=seed)
 
-            exp_save_file = f"spiking_reservoir_512_learning_rate_0.01_seed_{seed}_baseline.txt"
+            exp_save_file = "spiking_reservoir_512_learning_rate_0.01_seed_"+ str(seed) +"_baseline.txt"
             with open("progress.txt") as f1:
                 with open(exp_save_file, "w") as f2:
                     for line in f1:
@@ -380,10 +384,10 @@ def batch_size_test():
 
         batch_size = int(multiplier * num_elastica_timesteps)
         episodes = int(1000 / multiplier) + 1
-        exp_name = f'spiking_reservoir_512_learning_rate_0.01_seed_0_batch_size_{batch_size}_gradient_global_norm_clipping_0.00001_on_all_tensors'
+        exp_name = 'spiking_reservoir_512_learning_rate_0.01_seed_0_batch_size_' + str(batch_size) + '_gradient_global_norm_clipping_0.00001_on_all_tensors'
 
         with open("logging.txt", "a") as f:
-            f.write(f"exp_name: {exp_name}\n")
+            f.write("exp_name: " + exp_name + "\n")
 
         logger_kwargs = dict(output_dir='./', exp_name=exp_name)
 
@@ -441,12 +445,14 @@ def train_on_pendulum_baseline_rl_algos():
         vpg(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=steps_per_epoch, epochs=epochs, pi_lr=0.01, vf_lr=0.01, seed=0)
 
 if __name__ == "__main__":
+    nengo_loihi.set_defaults()
+
     # Reservoir parameters
-    dim = 3.0 # 2.0
+    dim = 2.0
     num_control_points = 3
     input_size = 11 + num_control_points * int(dim - 1)
     output_size = num_control_points * int(dim - 1)
-    n_reservoir_neurons = 512 #2048
+    n_reservoir_neurons = 512
     elastica_sim_time = 10 # 5
     nengo_sim_time = 0.01
     num_elastica_timesteps = int(elastica_sim_time/nengo_sim_time)
@@ -469,12 +475,12 @@ if __name__ == "__main__":
 
     # SpinningUp parameters
     env_fn = lambda : get_custom_elastica_env()
-    logger_kwargs = dict(output_dir='./', exp_name='spiking_reservoir_512_learning_rate_0.01_seed_0_batch_size_4000_gradient_global_norm_clipping_0.00001_on_all_tensors_epochs_1500')
+    logger_kwargs = dict(output_dir='./', exp_name='spiking_reservoir_512_learning_rate_0.01_seed_0_batch_size_1000_gradient_global_norm_clipping_0.00001_on_all_tensors_epochs_500')
     ac_kwargs = dict(hidden_sizes=[])
 
     # Run SpinningUp reinforcement learning algorithm
     with tf.Graph().as_default():
-        vpg(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=num_elastica_timesteps * 4, epochs=1500, pi_lr=0.01, vf_lr=0.01, seed=0)
+        vpg(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=num_elastica_timesteps, epochs=1, pi_lr=0.01, vf_lr=0.01, seed=0)
 
         # Run w/ and w/o grad clipping.
         # vpg(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=3 * num_elastica_timesteps, epochs=500, pi_lr=0.01, vf_lr=0.01, seed=0)
@@ -490,7 +496,7 @@ if __name__ == "__main__":
     # run_policy(env, get_action)
 
     # Plot the rewards and moving average rewards vs. episodes
-    plot()
+    # plot()
     # plot_pendulum()
     # plot_from_rewards_dir(pendulum_rewards=True)
 

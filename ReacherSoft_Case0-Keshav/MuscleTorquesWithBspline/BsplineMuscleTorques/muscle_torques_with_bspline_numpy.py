@@ -50,7 +50,7 @@ class MuscleTorquesWithVaryingBetaSplines(NoForces):
         direction,
         step_skip,
         max_rate_of_change_of_activation=0.01,
-        **kwargs,
+        **kwargs
     ):
         """
 
@@ -105,6 +105,7 @@ class MuscleTorquesWithVaryingBetaSplines(NoForces):
         self.number_of_control_points = number_of_control_points
         inner_pts = np.linspace(1/(2*self.number_of_control_points), 1-1/(2*self.number_of_control_points), self.number_of_control_points)
         spline_pts = np.concatenate((np.array([0]),inner_pts,np.array([1])))
+        # self.points_cached = np.zeros((2, self.number_of_control_points + 2))
         self.points_cached[0, :] = spline_pts  # position of control points along the rod.
           # This caches the control points. Note that first and last control points are zero.
         self.points_cached[0, :] = np.linspace(

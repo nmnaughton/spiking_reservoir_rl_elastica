@@ -14,7 +14,7 @@ def plot_video_with_sphere(
     fps=60,
     step=1,
     vis2D=True,
-    **kwargs,
+    **kwargs
 ):
     plt.rcParams.update({"font.size": 22})
 
@@ -167,7 +167,7 @@ def plot_video_with_sphere_2D(
     fps=60,
     step=1,
     vis2D=True,
-    **kwargs,
+    **kwargs
 ):
     plt.rcParams.update({"font.size": 22})
 

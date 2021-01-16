@@ -147,7 +147,7 @@ class Environment(gym.Env):
         dim=3.5,
         seed=0,
         *args,
-        **kwargs,
+        **kwargs
     ):
         """
 
