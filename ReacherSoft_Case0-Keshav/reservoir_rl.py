@@ -6,6 +6,7 @@ import gym
 import logging
 import multiprocessing as mp
 import numpy as np
+import scipy
 import sys
 # import tensorflow as tf
 
@@ -90,33 +91,18 @@ class ElasticaEnvWrapper(gym.Env):
         self.total_reward = 0.0
 
     def reset(self):
-        print("Inside reset")
         rod_state = self.elastica_env.reset()
 
         self.manager = mp.Manager()
 
-        if self.rod_state_q:
-            print("inside first if")
-            self.rod_state_q.close()
-
-        if self.reservoir_state_q:
-            print("inside second if")
-            self.reservoir_state_q.close()
-
         if self.p:
-            print("inside third if")
             self.p.terminate()
 
-        print("Blah")
         self.rod_state_q = self.manager.Queue()
         self.reservoir_state_q = self.manager.Queue()
-        print("redid the queues")
 
-        print("redoing the process")
         self.p = mp.Process(target=reservoir_worker_func, args=(input_size, n_reservoir_neurons, output_size, nengo_sim_time, self.rod_state_q, self.reservoir_state_q, num_elastica_timesteps,))
-        print("did it")
         self.p.start()
-        print("started")
 
         self.num_steps = 0
         self.total_reward = 0.0
@@ -125,19 +111,13 @@ class ElasticaEnvWrapper(gym.Env):
 
     def step(self, action):
         rod_state, reward, done, info = self.elastica_env.step(action)
-        print("putting rod state inside q")
         self.rod_state_q.put(rod_state)
-        print(self.rod_state_q.qsize())
-        print("put rod state inside q")
-        print("getting reservoir state inside q")
         reservoir_state = self.reservoir_state_q.get()
-        print("got reservoir state inside q")
         self.num_steps += 1
-        print(self.num_steps, done)
+        print(self.num_steps)
         self.total_reward += reward
 
         if done:
-            print("Inside done if block")
             reward = self.total_reward / self.num_steps
 
             if self.num_steps < num_elastica_timesteps:
@@ -165,7 +145,6 @@ def reservoir_worker_func(input_size, n_reservoir_neurons, output_size, nengo_si
         n_neurons=n_reservoir_neurons,
         output_size=output_size,
         sim_time=nengo_sim_time,
-        action_calculation_method='full',
         rod_state_q=rod_state_q,
         reservoir_state_q=reservoir_state_q)
 
