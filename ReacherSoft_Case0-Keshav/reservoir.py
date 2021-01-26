@@ -78,8 +78,9 @@ class ReservoirSimulator:
             conn_res = nengo.Connection(reservoir.neurons, reservoir.neurons, transform=W_reservoir_sparse_nengo)
 
             process_node = nengo.Node(output=set_scaled_reservoir_output, size_in=self.n_neurons)
-            conn_proc = nengo.Connection(reservoir.neurons, process_node, synapse=0.01)
-
+            self.W_out_eye = np.eye(self.n_neurons)
+            conn_proc = nengo.Connection(reservoir.neurons, process_node, synapse=0.01,transform=self.W_out_eye)
+            
         self.sim = nengo_loihi.Simulator(self.network, progress_bar=False)
 
     def _get_action_matrix_multiplication(self, reservoir_output, W_out):
