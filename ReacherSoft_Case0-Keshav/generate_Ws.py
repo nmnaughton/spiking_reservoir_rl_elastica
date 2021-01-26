@@ -5,8 +5,8 @@ def generate_Ws(seed=101, density=0.20, spectral_radius=0.9):
 
     bounds = [-1, 1]
     n_reservoir_neurons = 512
-    input_size = 14  # 17 # 5
-    output_size = 3  # 6  # 1
+    input_size = 14 # 3D Elastica: 17 # Pendulum: 5
+    output_size = 3 # 3D Elastica: 6  # Pendulum: 1
 
     np.random.seed(seed)
     W_in = np.random.uniform(bounds[0], bounds[1], (n_reservoir_neurons, input_size))
