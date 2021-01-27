@@ -29,9 +29,11 @@ except:
 from spinup import ppo_pytorch as ppo
 
 def get_elastica_env(collect_data_for_postprocessing=False):
+    sim_dt=2.0e-4
+    RL_update_interval = 0.01
     return Environment(
         final_time=elastica_sim_time,
-        num_steps_per_update=50,
+        num_steps_per_update=int(np.round( RL_update_interval/sim_dt)),
         number_of_control_points=num_control_points,
         alpha=75,
         beta=75,
@@ -41,7 +43,7 @@ def get_elastica_env(collect_data_for_postprocessing=False):
         target_v=0.5,
         boundary=[-0.6, 0.6, 0.3, 0.9, -0.6, 0.6],
         E=1e7,
-        sim_dt=2.0e-4,
+        sim_dt=sim_dt,
         n_elem=20,
         NU=30,
         dim=dim,
@@ -96,13 +98,14 @@ class ElasticaEnvWrapper(gym.Env):
 
 
 
-        self.p = mp.Process(target=reservoir_worker_func, args=(input_size, n_reservoir_neurons, output_size, nengo_sim_time, self.rod_state_q, self.reservoir_state_q, num_elastica_timesteps,))
+        self.p = mp.Process(target=reservoir_worker_func, args=(input_size, n_reservoir_neurons, output_size, nengo_sim_time, self.rod_state_q, self.reservoir_state_q, num_RL_timesteps,))
         self.p.start()
 
     def reset(self):
         rod_state = self.elastica_env.reset()
 
-        self.rod_state_q.put([True, rod_state])
+        # the first entry is a reset flag
+        self.rod_state_q.put([True, np.concatenate((rod_state,self.action))])
         reservoir_state = self.reservoir_state_q.get()
 
         self.num_steps = 0
@@ -112,21 +115,21 @@ class ElasticaEnvWrapper(gym.Env):
 
     def step(self, action):
         rod_state, reward, done, info = self.elastica_env.step(action)
-        self.rod_state_q.put([False,rod_state])
-
+        self.rod_state_q.put([False,np.concatenate((rod_state,action))])
+        # print(np.concatenate((rod_state,action)))
         reservoir_state = self.reservoir_state_q.get()
+        # print(reservoir_state)
         self.num_steps += 1
         # print('step #', self.num_steps)
         self.total_reward += reward
 
         if done:
-            reward = self.total_reward / self.num_steps
+            avg_reward = self.total_reward / self.num_steps
 
-            if self.num_steps < num_elastica_timesteps:
-                print("num_steps: ", self.num_steps)
-                print("total_reward: ", self.total_reward)
-                print("avg_reward: ", reward)
-                print('\n')
+            print("num_steps: ", self.num_steps)
+            print("total_reward: ", self.total_reward)
+            print("avg_reward: ", avg_reward)
+            print(' ')
 
             with open("logging.txt", "a") as f:
                 f.write(str(reward) + '\n')
@@ -140,7 +143,7 @@ class ElasticaEnvWrapper(gym.Env):
     def render(self, mode='human'):
         return
 
-def reservoir_worker_func(input_size, n_reservoir_neurons, output_size, nengo_sim_time, rod_state_q, reservoir_state_q, num_elastica_timesteps):
+def reservoir_worker_func(input_size, n_reservoir_neurons, output_size, nengo_sim_time, rod_state_q, reservoir_state_q, num_RL_timesteps):
 
     reservoir_simulator = ReservoirSimulator(
         input_size=input_size,
@@ -150,7 +153,7 @@ def reservoir_worker_func(input_size, n_reservoir_neurons, output_size, nengo_si
         rod_state_q=rod_state_q,
         reservoir_state_q=reservoir_state_q)
 
-    reservoir_simulator.simulate_network_continuous(num_elastica_timesteps)
+    reservoir_simulator.simulate_network_continuous(num_RL_timesteps)
     print("FINISHED WORKER, returning")
     return
 
@@ -159,12 +162,13 @@ if __name__ == "__main__":
     # Reservoir parameters
     dim = 2.0
     num_control_points = 3
-    input_size = 11 + num_control_points * int(dim - 1)
     output_size = num_control_points * int(dim - 1)
+    input_size = 11 + num_control_points * int(dim - 1) + output_size
     n_reservoir_neurons = 512
-    elastica_sim_time = 10
+    elastica_sim_time = 5
+    num_episodes_per_epoch = 4
     nengo_sim_time = 0.01
-    num_elastica_timesteps = int(elastica_sim_time/nengo_sim_time)
+    num_RL_timesteps = int(np.round(elastica_sim_time/nengo_sim_time * num_episodes_per_epoch))
     weights_size = n_reservoir_neurons * output_size
 
     # SpinningUp parameters
@@ -176,7 +180,7 @@ if __name__ == "__main__":
     # with tf.Graph().as_default():
         # vpg(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=num_elastica_timesteps, epochs=1, pi_lr=0.01, vf_lr=0.01, seed=0)
 
-    ppo(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=num_elastica_timesteps, epochs=5, seed=0)
+    ppo(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=num_RL_timesteps, epochs=50, seed=0)
 
     print('shutting down with errors. These could be fixed by editing spinning up code. ')
 
