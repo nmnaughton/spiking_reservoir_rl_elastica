@@ -37,49 +37,66 @@ class ReservoirSimulator:
         self.rod_state_q = rod_state_q
         self.reservoir_state_q = reservoir_state_q
 
+        self.W_in = np.load('W_in.npy')
+        self.W_reservoir = np.load('W_reservoir.npy')
+
+        W_reservoir_sparse = scipy.sparse.find(self.W_reservoir)
+        indicies = np.array([W_reservoir_sparse[0], W_reservoir_sparse[1]]).T
+        self.W_reservoir_sparse_nengo = nengo.Sparse(self.W_reservoir.shape, indicies, W_reservoir_sparse[2])
+
+        self.initialize_reservoir()
+
+    def reset_reservoir(self):
+        self.sim.close()
         self.initialize_reservoir()
 
     def initialize_reservoir(self):
         # Disable nengo cache warnings
-        nengo.rc.set("decoder_cache", "enabled", "False")
+        # nengo.rc.set("decoder_cache", "enabled", "False")
 
         if self.sim:
           self.sim.close()
 
         network = nengo.Network(seed = self.seed)
         self.n_reservoir_steps = 0
-
-        W_in = np.load('W_in.npy')
-        W_reservoir = np.load('W_reservoir.npy')
-
-        # W_reservoir_sparse = scipy.sparse.find(self.W_reservoir)
-        # indicies = np.array([W_reservoir_sparse[0], W_reservoir_sparse[1]]).T
-        # self.W_reservoir_sparse_nengo = nengo.Sparse(self.W_reservoir.shape, indicies, W_reservoir_sparse[2])
+        self.n_reservoir_steps_output = 0
 
         with network:
             def get_scaled_rod_state(time):
                 if (self.n_reservoir_steps % 10) == 0:
-                    self.rod_state = self.rod_state_q.get()
+                    # print('trying to get rod state')
+                    self.done, self.rod_state = self.rod_state_q.get()
+                    # print('success getting rod state', self.done)
                 self.n_reservoir_steps += 1
-                return self.rod_state * 2000
+                return self.rod_state
 
             def set_scaled_reservoir_output(time, reservoir_output):
-                reservoir_output = reservoir_output * 1e-4
-                if (self.n_reservoir_steps % 10) == 0:
-                    reservoir_output_sparse = reservoir_output
-                    self.reservoir_state_q.put(reservoir_output_sparse)
-                return reservoir_output
+                if (self.n_reservoir_steps_output % 10) == 0:
+                    # print('going to put reservoir state')
+                    self.reservoir_state_q.put(reservoir_output)
+                    # print('success putting reservoir state')
+                self.n_reservoir_steps_output += 1
 
-            input_layer = nengo.Node(output=get_scaled_rod_state, size_in=0, size_out=self.input_size)
-            reservoir = nengo.Ensemble(n_neurons=self.n_neurons, dimensions=self.input_size, neuron_type=nengo.LIF())
+            
+            input_layer  = nengo.Node(output=get_scaled_rod_state, size_in=0, size_out=self.input_size)
+            reservoir    = nengo.Ensemble(n_neurons=self.n_neurons, dimensions=1, neuron_type=nengo_loihi.neurons.LIF(amplitude=0.001))
             process_node = nengo.Node(output=set_scaled_reservoir_output, size_in=self.n_neurons)
 
-            conn_in = nengo.Connection(input_layer, reservoir.neurons, synapse=None, transform=W_in)
+            conn_in = nengo.Connection(input_layer, reservoir.neurons, synapse=None, transform=self.W_in)
+            self.W_out_eye = np.eye(self.n_neurons)
             conn_proc = nengo.Connection(reservoir.neurons, process_node, synapse=0.01)
-            conn_res = nengo.Connection(process_node, reservoir.neurons, synapse=None, transform=W_reservoir)
+            conn_res = nengo.Connection(reservoir.neurons, reservoir.neurons, transform=self.W_reservoir_sparse_nengo)
 
-        self.sim = nengo_loihi.Simulator(network, remove_passthrough=True)
+        self.sim = nengo_loihi.Simulator(network)
 
     def simulate_network_continuous(self, num_elastica_timesteps):
         total_sim_time = int(self.sim_time * num_elastica_timesteps)
-        self.sim.run(total_sim_time)
+        print('going to run for:', total_sim_time)
+        # self.sim.run(total_sim_time)
+        while True:
+            self.sim.run_steps(10)
+            # self.sim.run_steps(int(np.round(self.sim_time/0.001)))
+            if self.done:
+                print('resetting reservoir')
+                self.reset_reservoir()
+

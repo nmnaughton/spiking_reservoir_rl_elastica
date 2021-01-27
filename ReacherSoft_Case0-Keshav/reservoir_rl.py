@@ -25,7 +25,7 @@ except:
     print('nxsdk is not installed')
 
 # Import SpinningUp RL packages
-from spinup import vpg_tf1 as vpg
+# from spinup import vpg_tf1 as vpg
 from spinup import ppo_pytorch as ppo
 
 def get_elastica_env(collect_data_for_postprocessing=False):
@@ -90,31 +90,33 @@ class ElasticaEnvWrapper(gym.Env):
         self.num_steps = 0
         self.total_reward = 0.0
 
-    def reset(self):
-        rod_state = self.elastica_env.reset()
-
         self.manager = mp.Manager()
-
-        if self.p:
-            self.p.terminate()
-
         self.rod_state_q = self.manager.Queue()
         self.reservoir_state_q = self.manager.Queue()
+
+
 
         self.p = mp.Process(target=reservoir_worker_func, args=(input_size, n_reservoir_neurons, output_size, nengo_sim_time, self.rod_state_q, self.reservoir_state_q, num_elastica_timesteps,))
         self.p.start()
 
+    def reset(self):
+        rod_state = self.elastica_env.reset()
+
+        self.rod_state_q.put([True, rod_state])
+        reservoir_state = self.reservoir_state_q.get()
+
         self.num_steps = 0
         self.total_reward = 0.0
 
-        return np.zeros(n_reservoir_neurons)
+        return reservoir_state
 
     def step(self, action):
         rod_state, reward, done, info = self.elastica_env.step(action)
-        self.rod_state_q.put(rod_state)
+        self.rod_state_q.put([False,rod_state])
+
         reservoir_state = self.reservoir_state_q.get()
         self.num_steps += 1
-        print(self.num_steps)
+        # print('step #', self.num_steps)
         self.total_reward += reward
 
         if done:
@@ -174,4 +176,10 @@ if __name__ == "__main__":
     # with tf.Graph().as_default():
         # vpg(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=num_elastica_timesteps, epochs=1, pi_lr=0.01, vf_lr=0.01, seed=0)
 
-    ppo(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=num_elastica_timesteps, epochs=1, seed=0)
+    ppo(env_fn=env_fn, ac_kwargs=ac_kwargs, logger_kwargs=logger_kwargs, steps_per_epoch=num_elastica_timesteps, epochs=5, seed=0)
+
+    print('shutting down with errors. These could be fixed by editing spinning up code. ')
+
+        # if ElasticaEnvWrapper.p:
+    #     print('terminating previous process')
+    #     ElasticaEnvWrapper.p.terminate()
