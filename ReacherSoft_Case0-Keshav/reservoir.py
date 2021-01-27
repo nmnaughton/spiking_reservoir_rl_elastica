@@ -66,40 +66,43 @@ class ReservoirSimulator:
         network = nengo.Network(seed = self.seed)
         self.n_reservoir_steps = 0
         self.n_reservoir_steps_output = 0
+        # self.got_state_from_queue = False
+        # self.put_state_into_queue = False
+        self.steps_taken = 0
+        self.total_steps = int(np.round(self.sim_time/self.nengo_dt))
 
         with network:
-            def get_scaled_rod_state(time):
-                if (self.n_reservoir_steps % 10) == 0:
-                    # print('getting rod state from queue')
-                    self.done, self.rod_state = self.rod_state_q.get()
-                self.n_reservoir_steps += 1
+            def get_rod_state(time):
                 return self.rod_state
 
-            def set_scaled_reservoir_output(time, reservoir_output):
-                if (self.n_reservoir_steps_output % 10) == 0:
-                    # print('putting reservoir state in queue')
+            def set_reservoir_output(time, reservoir_output):
+                # self.reservoir_output = reservoir_output
+                self.steps_taken += 1
+                if self.steps_taken == self.total_steps:
                     self.reservoir_state_q.put(reservoir_output)
-                self.n_reservoir_steps_output += 1
 
-            
-            input_layer  = nengo.Node(output=get_scaled_rod_state, size_in=0, size_out=self.input_size)
-            reservoir    = nengo.Ensemble(n_neurons=self.n_neurons, dimensions=1, neuron_type=nengo.LIF(amplitude=self.nengo_dt * 0.1))
-            # reservoir    = nengo.Ensemble(n_neurons=self.n_neurons, dimensions=1, neuron_type=nengo_loihi.neurons.LIF(amplitude=self.nengo_dt))
-            process_node = nengo.Node(output=set_scaled_reservoir_output, size_in=self.n_neurons)
+            input_layer  = nengo.Node(output=get_rod_state, size_in=0, size_out=self.input_size)
+            # reservoir    = nengo.Ensemble(n_neurons=self.n_neurons, dimensions=1, neuron_type=nengo.LIF(amplitude=self.nengo_dt * 0.1))
+            reservoir    = nengo.Ensemble(n_neurons=self.n_neurons, dimensions=1, neuron_type=nengo_loihi.neurons.LIF(amplitude=self.nengo_dt*0.1))
+            process_node = nengo.Node(output=set_reservoir_output, size_in=self.n_neurons)
 
             conn_in   = nengo.Connection(input_layer, reservoir.neurons, synapse=None, transform=self.W_in)
             conn_proc = nengo.Connection(reservoir.neurons, process_node, synapse=0.01)
             conn_res  = nengo.Connection(reservoir.neurons, reservoir.neurons, transform=self.W_reservoir_sparse_nengo)
 
-        # self.sim = nengo_loihi.Simulator(network, dt=self.nengo_dt)
-        self.sim = nengo.Simulator(network, dt=self.nengo_dt, progress_bar=False)
+        self.sim = nengo_loihi.Simulator(network, dt=self.nengo_dt)
+        # self.sim = nengo.Simulator(network, dt=self.nengo_dt, progress_bar=False)
 
     def simulate_network_continuous(self, num_elastica_timesteps):
+        print(self.sim.sims)
         while True:
-            self.sim.run_steps(int(np.round(self.sim_time/self.nengo_dt)))
+            self.steps_taken = 0
+            self.done, self.rod_state = self.rod_state_q.get()
             if self.done:
-                # print('resetting reservoir')
                 self.reset_reservoir()
+            self.sim.run_steps(self.total_steps)
+            # self.reservoir_state_q.put(self.reservoir_output)
+            
 
 def generate_Ws(seed=101, density=0.20, spectral_radius=0.9):
     np.random.seed(seed)

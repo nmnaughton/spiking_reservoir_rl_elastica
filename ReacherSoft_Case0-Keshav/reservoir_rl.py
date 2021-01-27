@@ -96,8 +96,6 @@ class ElasticaEnvWrapper(gym.Env):
         self.rod_state_q = self.manager.Queue()
         self.reservoir_state_q = self.manager.Queue()
 
-
-
         self.p = mp.Process(target=reservoir_worker_func, args=(input_size, n_reservoir_neurons, output_size, nengo_sim_time, self.rod_state_q, self.reservoir_state_q, num_RL_timesteps,))
         self.p.start()
 
