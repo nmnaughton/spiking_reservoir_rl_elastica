@@ -1,0 +1,318 @@
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>  // memcpy
+#include <unistd.h>  // usleep
+
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+
+#include "nxsdkhost.h"
+
+#define DEBUG 0
+
+#define N_CHIPS {{ n_chips }}
+#define BUFFER_SIZE {{ buffer_size }}
+#define PACKET_SIZE {{ packet_size }} // size of a packet, in int32s
+#define READ_SIZE {{ read_size }} // max bytes to read at a time, in int32s
+#define WRITE_PACKETS {{ write_packets }} // max packets to write at a time
+
+#define SERVER_PORT htons({{ server_port }})
+
+namespace nengo_host {
+
+template <class T>
+inline T min(T a, T b) {
+    return (a < b) ? a : b;
+}
+
+const char *input_channels[N_CHIPS] = {
+{% for x in input_channels %}
+  "{{ x }}"{{ "," if loop.index < loop.length else "" }}
+{% endfor %}
+};
+const char *output_channels[N_CHIPS] = {
+{% for x in output_channels %}
+  "{{ x }}"{{ "," if loop.index < loop.length else "" }}
+{% endfor %}
+};
+const int output_packets[N_CHIPS] = { {{ output_packets }} };
+
+class NengoHostProcess : public ConcurrentHostSnip {
+    int32_t buffer[BUFFER_SIZE];
+    int server_socket;
+    int client_socket;
+    bool is_shutdown = false;
+    static constexpr char const *prepend_msg = "[Host] ";
+
+  public:
+    NengoHostProcess() {
+        // --- set up socket to communicate with superhost
+        // This machine will act as the server, and the superhost will
+        // connect in as the client
+        server_socket = socket(AF_INET, SOCK_STREAM, 0);
+
+        int disable_delay = 1;
+        setsockopt(server_socket, SOL_TCP, TCP_NODELAY, &disable_delay,
+                   sizeof(disable_delay));
+
+        sockaddr_in server_address;
+        server_address.sin_family = AF_INET;
+        server_address.sin_port = SERVER_PORT;
+        server_address.sin_addr.s_addr = INADDR_ANY;
+
+        bind(server_socket, (struct sockaddr*)&server_address,
+             sizeof(struct sockaddr));
+
+        msg("Listening for client");
+        listen(server_socket, 1);
+
+        // get incoming client connection
+        sockaddr_in client_address;
+        socklen_t sin_size = sizeof(struct sockaddr_in);
+        client_socket = accept(server_socket,
+                               (struct sockaddr*)&client_address, &sin_size);
+
+        msg("Connected to client");
+    }
+
+    ~NengoHostProcess() {
+        msg("Closing server socket");
+        close(server_socket);
+    }
+
+    void run(std::atomic_bool& end_of_execution) override {
+        if (server_socket < 0 || client_socket < 0) {
+            msg("Error creating socket, server or client socket < 0");
+            msg("Server socket: %d", server_socket);
+            msg("Client socket: %d", client_socket);
+            shutdown();
+            return;
+        }
+        int32_t chip_sizes[N_CHIPS];  // number of inputs to each chip
+
+        // --- loop to transmit data from superhost to chip and vice versa
+        while (!end_of_execution && !is_shutdown) {
+            // read packets from superhost socket
+            // first read is blocking, so we wait for packets
+#if DEBUG > 1
+            msg("Preparing to read socket");
+#endif
+            ssize_t n_read = recv(client_socket, buffer, 4 * READ_SIZE, 0);
+            int buffer_len = n_read / 4;
+            int buffer_pos = 0;
+            if (buffer[0] < 0) {
+                msg("Received shutdown signal: %d", buffer[0]);
+                shutdown();
+                return;
+            }
+            if (n_read % 4 != 0) {
+                msg("Read split an element: n_read=%zu", n_read);
+                shutdown();
+                return;
+            }
+#if DEBUG > 0
+            msg("Read %zu bytes", n_read);
+#endif
+
+            // process header
+            if (n_read < 4 * N_CHIPS) {
+                msg("Could not read full message header");
+                shutdown();
+                return;
+            }
+            memcpy(chip_sizes, buffer, 4 * N_CHIPS);
+            buffer_pos += N_CHIPS;
+#if DEBUG > 0
+            for (int i = 0; i < N_CHIPS; i++) {
+                msg("Chip %d size: %d", i, chip_sizes[i]);
+            }
+#endif
+
+            int i_chip = 0;  // index of current chip to send packets to
+            int remaining_size = chip_sizes[i_chip];  // size remaining to send to current chip
+            int i_wait = 0;  // number of times we've had to wait
+            while (i_chip < N_CHIPS) {
+                int required_size = min(PACKET_SIZE, remaining_size);
+                if (buffer_pos + required_size > buffer_len) {
+                    if (buffer_pos < buffer_len) {
+#if DEBUG > 1
+                        msg("Copying: %d", buffer_len - buffer_pos);
+#endif
+                        memcpy(buffer, &buffer[buffer_pos], 4 * (buffer_len - buffer_pos));
+                        buffer_len -= buffer_pos;
+                    } else {
+                        buffer_len = 0;
+                    }
+                    buffer_pos = 0;
+
+                    // subsequent reads are non-blocking, so we just read what's there
+                    while (buffer_len < required_size) {
+                        if (i_wait > 100) {
+                            msg("Waited too long for socket read");
+                            shutdown();
+                            return;
+                        }
+                        n_read = recv(client_socket, &buffer[buffer_len], 4*READ_SIZE, MSG_DONTWAIT);
+                        if (n_read > 0) {
+                            if (n_read % 4 != 0) {
+                                msg("Read split an element: n_read=%zu", n_read);
+                                shutdown();
+                                return;
+                            }
+#if DEBUG > 0
+                            msg("Read %zu bytes", n_read);
+#endif
+                            buffer_len += n_read / 4;
+                        } else {
+                            i_wait++;
+                            usleep(100);
+                        }
+                    }
+                }
+
+#if DEBUG > 1
+                printf("%s", prepend_msg);
+                printf("Chip %d send buffer: [", i_chip);
+                for (int i = 0; i < min(PACKET_SIZE, remaining_size); i++) {
+                    printf("%d, ", buffer[buffer_pos + i]);
+                }
+                printf("]\n");
+#endif
+                // write packet to chip
+                writeChannel(input_channels[i_chip], &buffer[buffer_pos], 1);
+                remaining_size -= PACKET_SIZE;
+#if DEBUG > 1
+                msg("Remaining size %d", remaining_size);
+#endif
+
+                if (remaining_size <= 0) {
+                    buffer_pos += PACKET_SIZE + remaining_size;
+                    i_chip++;
+                    if (i_chip < N_CHIPS) {
+                        remaining_size = chip_sizes[i_chip];
+                    }
+                } else {
+                    buffer_pos += PACKET_SIZE;
+                }
+            }
+
+            // wait until all chip have written output (no channels empty)
+            bool any_channel_empty = true;
+            i_wait = 0;
+            while (!end_of_execution && !is_shutdown) {
+                if (i_wait > 100000) {  // wait 10 seconds at most
+                    msg("Chip not responding. Ending simulation");
+                    shutdown();
+                    return;
+                }
+
+                any_channel_empty = false;
+                for (int i = 0; i < N_CHIPS; i++) {
+                    if (!probeChannel(output_channels[i])) {
+                        any_channel_empty = true;
+                        break;
+                    }
+                }
+                if (!any_channel_empty) {
+                    break;
+                }
+                usleep(100);
+                i_wait++;
+            }
+            if (end_of_execution || is_shutdown) {
+                return;
+            }
+
+            i_chip = 0;
+            buffer_len = 0;
+            int buffer_packets = 0;  // buffer len in packets
+            remaining_size = output_packets[i_chip];  // number of remaining packets
+            while (i_chip < N_CHIPS) {
+                // read chip output
+                int n_packets = min(remaining_size, WRITE_PACKETS - buffer_packets);
+                readChannel(output_channels[i_chip], &buffer[buffer_len], n_packets);
+#if DEBUG > 0
+                msg("Got %d packet(s) from chip %d", n_packets, i_chip);
+#endif
+                if (remaining_size == output_packets[i_chip]) {
+                    // this is the first read from this chip. Check if it's had an error.
+                    if (buffer[buffer_len] < 0) {
+                        msg("Chip %d sent shutdown signal.", i_chip);
+                        shutdown();
+                        return;
+                    }
+                }
+                buffer_len += n_packets * PACKET_SIZE;
+                buffer_packets += n_packets;
+                remaining_size -= n_packets;
+
+                if (remaining_size <= 0) {
+                    i_chip++;
+                    if (i_chip < N_CHIPS) {
+                        remaining_size = output_packets[i_chip];
+                    }
+                }
+
+                if (buffer_packets == WRITE_PACKETS || i_chip == N_CHIPS) {
+                    // write output to superhost socket
+                    const size_t write_bytes = buffer_len * sizeof(int32_t);
+                    size_t n_write = write(client_socket, buffer, write_bytes);
+                    buffer_len = 0;
+                    buffer_packets = 0;
+#if DEBUG > 0
+                    msg("Sent %zu bytes", n_write);
+#endif
+                    if (n_write != write_bytes) {
+                        msg("Failed write to socket (tried %zu, wrote %zu bytes)",
+                            write_bytes, n_write);
+                        shutdown();
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+  private:
+
+    void msg(const char *fmt, ...) {
+        printf("%s", prepend_msg);
+        va_list args;
+        va_start(args, fmt);
+        vprintf(fmt, args);
+        va_end(args);
+        printf("\n");
+    }
+
+    void shutdown() {
+        if (!is_shutdown) {
+            for (int i = 0; i < BUFFER_SIZE; i++) {
+                buffer[i] = -1;
+            }
+
+            // make sure all chips get shutdown signal
+            for (int i = 0; i < N_CHIPS; i++) {
+                writeChannel(input_channels[i], buffer, 1);
+            }
+
+            // make sure superhost knows we're shutting down
+            ssize_t n_write = write(client_socket, buffer, 4 * BUFFER_SIZE);
+            msg("Wrote superhost shutdown signal: %zu bytes", n_write);
+        }
+        is_shutdown = true;
+    }
+};
+
+}  // namespace nengo_host
+
+using nengo_host::NengoHostProcess;
+
+// Each ConcurrentHostSnip is run within a thread
+// If you have more threads on the host cpu, you can choose to create individual
+// snips for input and output
+REGISTER_SNIP(NengoHostProcess, ConcurrentHostSnip);
