@@ -4,13 +4,13 @@
     },
     "actor_critic":	"MLPActorCritic",
     "clip_ratio":	0.2,
-    "env_fn":	"<function <lambda> at 0x16bac90e0>",
+    "env_fn":	"<function <lambda> at 0x1715050e0>",
     "epochs":	50,
     "exp_name":	"ppo_spiking_reservoir_512_learning_rate_0.01_seed_0_batch_size_1000_epochs_500",
     "gamma":	0.99,
     "lam":	0.97,
     "logger":	{
-        "<spinup.utils.logx.EpochLogger object at 0x16afdfe90>":	{
+        "<spinup.utils.logx.EpochLogger object at 0x170a1be90>":	{
             "epoch_dict":	{},
             "exp_name":	"ppo_spiking_reservoir_512_learning_rate_0.01_seed_0_batch_size_1000_epochs_500",
             "first_row":	true,

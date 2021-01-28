@@ -94,16 +94,23 @@ class ReservoirSimulator:
                 # print(' ')
 
             input_layer  = nengo.Node(output=get_rod_state, size_in=0, size_out=self.input_size)
-            reservoir    = nengo.Ensemble(n_neurons=self.n_neurons, dimensions=1, neuron_type=nengo.LIF(amplitude=self.nengo_dt))
-            # reservoir    = nengo.Ensemble(n_neurons=self.n_neurons, dimensions=1, neuron_type=nengo_loihi.neurons.LIF(amplitude=self.nengo_dt*0.1))
+            # reservoir    = nengo.Ensemble(n_neurons=self.n_neurons, dimensions=1, neuron_type=nengo.LIF(amplitude=self.nengo_dt))
+            reservoir    = nengo.Ensemble(n_neurons=self.n_neurons, dimensions=1, neuron_type=nengo.SpikingRectifiedLinear(amplitude=self.nengo_dt))
+            # reservoir    = nengo.Ensemble(n_neurons=self.n_neurons, dimensions=1, neuron_type=nengo_loihi.neurons.LoihiLIF(amplitude=self.nengo_dt*0.1))
+            # reservoir    = nengo.Ensemble(n_neurons=self.n_neurons, dimensions=1, neuron_type=nengo_loihi.neurons.LoihiSpikingRectifiedLinear(amplitude=self.nengo_dt))
             process_node = nengo.Node(output=set_reservoir_output, size_in=self.n_neurons, size_out=0)
 
             conn_in   = nengo.Connection(input_layer, reservoir.neurons, synapse=None, transform=self.W_in)
-            conn_proc = nengo.Connection(reservoir.neurons, process_node, synapse=0.001)
-            conn_res  = nengo.Connection(reservoir.neurons, reservoir.neurons, transform=self.W_reservoir_sparse_nengo)
+            conn_proc = nengo.Connection(reservoir.neurons, process_node, synapse=None) 
+            # this synapse if 0.001 instead of 0.01 because the output skips 10 steps between calls 
+            # so the time value needs to be adjusted accordingly
+            conn_res  = nengo.Connection(reservoir.neurons, reservoir.neurons, synapse=0, transform=self.W_reservoir_sparse_nengo)
 
-        self.sim = nengo_loihi.Simulator(network, dt=self.nengo_dt)
-        # self.sim = nengo.Simulator(network, dt=self.nengo_dt, progress_bar=False)
+
+        # IMPORTANT: due to the changes in how data is passed, this code does not work with nengo anymore.
+        # It will not properly handle the outputting of the reservoir state if you do not use the 
+        # custom version of nengo_loihi in this folder. 
+        self.sim = nengo_loihi.Simulator(network, dt=self.nengo_dt, precompute=True)
 
     def simulate_network_continuous(self, num_elastica_timesteps):
         print(self.sim.sims)
