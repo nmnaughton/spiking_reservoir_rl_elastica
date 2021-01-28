@@ -52,7 +52,7 @@ class MuscleTorquesWithVaryingBetaSplines(NoForces):
         direction,
         step_skip,
         max_rate_of_change_of_activation=0.01,
-        **kwargs,
+        **kwargs
     ):
         """
 
